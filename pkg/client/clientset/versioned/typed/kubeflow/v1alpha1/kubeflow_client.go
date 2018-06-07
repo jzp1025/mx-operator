@@ -17,15 +17,15 @@
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha1"
-	"github.com/kubeflow/tf-operator/pkg/client/clientset/versioned/scheme"
+	v1alpha1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
+	"github.com/jzp1025/mx-operator/pkg/client/clientset/versioned/scheme"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	rest "k8s.io/client-go/rest"
 )
 
 type KubeflowV1alpha1Interface interface {
 	RESTClient() rest.Interface
-	TFJobsGetter
+	MXJobsGetter
 }
 
 // KubeflowV1alpha1Client is used to interact with features provided by the kubeflow.org group.
@@ -33,8 +33,8 @@ type KubeflowV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *KubeflowV1alpha1Client) TFJobs(namespace string) TFJobInterface {
-	return newTFJobs(c, namespace)
+func (c *KubeflowV1alpha1Client) MXJobs(namespace string) MXJobInterface {
+	return newMXJobs(c, namespace)
 }
 
 // NewForConfig creates a new KubeflowV1alpha1Client for the given config.

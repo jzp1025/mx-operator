@@ -17,11 +17,11 @@
 package fake
 
 import (
-	clientset "github.com/kubeflow/tf-operator/pkg/client/clientset/versioned"
-	kubeflowv1alpha1 "github.com/kubeflow/tf-operator/pkg/client/clientset/versioned/typed/kubeflow/v1alpha1"
-	fakekubeflowv1alpha1 "github.com/kubeflow/tf-operator/pkg/client/clientset/versioned/typed/kubeflow/v1alpha1/fake"
-	kubeflowv1alpha2 "github.com/kubeflow/tf-operator/pkg/client/clientset/versioned/typed/kubeflow/v1alpha2"
-	fakekubeflowv1alpha2 "github.com/kubeflow/tf-operator/pkg/client/clientset/versioned/typed/kubeflow/v1alpha2/fake"
+	clientset "github.com/jzp1025/mx-operator/pkg/client/clientset/versioned"
+	kubeflowv1alpha1 "github.com/jzp1025/mx-operator/pkg/client/clientset/versioned/typed/kubeflow/v1alpha1"
+	fakekubeflowv1alpha1 "github.com/jzp1025/mx-operator/pkg/client/clientset/versioned/typed/kubeflow/v1alpha1/fake"
+//	kubeflowv1alpha2 "github.com/kubeflow/tf-operator/pkg/client/clientset/versioned/typed/kubeflow/v1alpha2"
+//	fakekubeflowv1alpha2 "github.com/kubeflow/tf-operator/pkg/client/clientset/versioned/typed/kubeflow/v1alpha2/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
@@ -73,6 +73,6 @@ func (c *Clientset) Kubeflow() kubeflowv1alpha1.KubeflowV1alpha1Interface {
 }
 
 // KubeflowV1alpha2 retrieves the KubeflowV1alpha2Client
-func (c *Clientset) KubeflowV1alpha2() kubeflowv1alpha2.KubeflowV1alpha2Interface {
-	return &fakekubeflowv1alpha2.FakeKubeflowV1alpha2{Fake: &c.Fake}
-}
+//func (c *Clientset) KubeflowV1alpha2() kubeflowv1alpha2.KubeflowV1alpha2Interface {
+//	return &fakekubeflowv1alpha2.FakeKubeflowV1alpha2{Fake: &c.Fake}
+//}

@@ -16,4 +16,4 @@
 
 package v1alpha1
 
-type TFJobExpansion interface{}
+type MXJobExpansion interface{}

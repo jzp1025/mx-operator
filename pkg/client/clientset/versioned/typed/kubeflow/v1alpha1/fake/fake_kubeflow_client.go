@@ -17,7 +17,7 @@
 package fake
 
 import (
-	v1alpha1 "github.com/kubeflow/tf-operator/pkg/client/clientset/versioned/typed/kubeflow/v1alpha1"
+	v1alpha1 "github.com/jzp1025/mx-operator/pkg/client/clientset/versioned/typed/kubeflow/v1alpha1"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 )
@@ -26,8 +26,8 @@ type FakeKubeflowV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeKubeflowV1alpha1) TFJobs(namespace string) v1alpha1.TFJobInterface {
-	return &FakeTFJobs{c, namespace}
+func (c *FakeKubeflowV1alpha1) MXJobs(namespace string) v1alpha1.MXJobInterface {
+	return &FakeMXJobs{c, namespace}
 }
 
 // RESTClient returns a RESTClient that is used to communicate

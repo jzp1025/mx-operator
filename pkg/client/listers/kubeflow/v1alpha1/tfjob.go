@@ -19,76 +19,76 @@
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha1"
+	v1alpha1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
 )
 
 // TFJobLister helps list TFJobs.
-type TFJobLister interface {
+type MXJobLister interface {
 	// List lists all TFJobs in the indexer.
-	List(selector labels.Selector) (ret []*v1alpha1.TFJob, err error)
+	List(selector labels.Selector) (ret []*v1alpha1.MXJob, err error)
 	// TFJobs returns an object that can list and get TFJobs.
-	TFJobs(namespace string) TFJobNamespaceLister
-	TFJobListerExpansion
+	MXJobs(namespace string) MXJobNamespaceLister
+	MXJobListerExpansion
 }
 
 // tFJobLister implements the TFJobLister interface.
-type tFJobLister struct {
+type mXJobLister struct {
 	indexer cache.Indexer
 }
 
 // NewTFJobLister returns a new TFJobLister.
-func NewTFJobLister(indexer cache.Indexer) TFJobLister {
-	return &tFJobLister{indexer: indexer}
+func NewMXJobLister(indexer cache.Indexer) MXJobLister {
+	return &mXJobLister{indexer: indexer}
 }
 
 // List lists all TFJobs in the indexer.
-func (s *tFJobLister) List(selector labels.Selector) (ret []*v1alpha1.TFJob, err error) {
+func (s *mXJobLister) List(selector labels.Selector) (ret []*v1alpha1.MXJob, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1alpha1.TFJob))
+		ret = append(ret, m.(*v1alpha1.MXJob))
 	})
 	return ret, err
 }
 
 // TFJobs returns an object that can list and get TFJobs.
-func (s *tFJobLister) TFJobs(namespace string) TFJobNamespaceLister {
-	return tFJobNamespaceLister{indexer: s.indexer, namespace: namespace}
+func (s *mXJobLister) MXJobs(namespace string) MXJobNamespaceLister {
+	return mXJobNamespaceLister{indexer: s.indexer, namespace: namespace}
 }
 
 // TFJobNamespaceLister helps list and get TFJobs.
-type TFJobNamespaceLister interface {
+type MXJobNamespaceLister interface {
 	// List lists all TFJobs in the indexer for a given namespace.
-	List(selector labels.Selector) (ret []*v1alpha1.TFJob, err error)
+	List(selector labels.Selector) (ret []*v1alpha1.MXJob, err error)
 	// Get retrieves the TFJob from the indexer for a given namespace and name.
-	Get(name string) (*v1alpha1.TFJob, error)
-	TFJobNamespaceListerExpansion
+	Get(name string) (*v1alpha1.MXJob, error)
+	MXJobNamespaceListerExpansion
 }
 
 // tFJobNamespaceLister implements the TFJobNamespaceLister
 // interface.
-type tFJobNamespaceLister struct {
+type mXJobNamespaceLister struct {
 	indexer   cache.Indexer
 	namespace string
 }
 
 // List lists all TFJobs in the indexer for a given namespace.
-func (s tFJobNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.TFJob, err error) {
+func (s mXJobNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.MXJob, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1alpha1.TFJob))
+		ret = append(ret, m.(*v1alpha1.MXJob))
 	})
 	return ret, err
 }
 
 // Get retrieves the TFJob from the indexer for a given namespace and name.
-func (s tFJobNamespaceLister) Get(name string) (*v1alpha1.TFJob, error) {
+func (s mXJobNamespaceLister) Get(name string) (*v1alpha1.MXJob, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.NewNotFound(v1alpha1.Resource("tfjob"), name)
+		return nil, errors.NewNotFound(v1alpha1.Resource("mxjob"), name)
 	}
-	return obj.(*v1alpha1.TFJob), nil
+	return obj.(*v1alpha1.MXJob), nil
 }

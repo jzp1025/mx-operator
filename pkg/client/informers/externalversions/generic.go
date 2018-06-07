@@ -21,8 +21,8 @@ package externalversions
 import (
 	"fmt"
 
-	v1alpha1 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha1"
-	v1alpha2 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha2"
+	v1alpha1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
+//	v1alpha2 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha2"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 )
@@ -54,14 +54,14 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=Kubeflow, Version=V1alpha1
-	case v1alpha1.SchemeGroupVersion.WithResource("tfjobs"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeflow().V1alpha1().TFJobs().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("mxjobs"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeflow().V1alpha1().MXJobs().Informer()}, nil
 
 		// Group=Kubeflow, Version=V1alpha2
-	case v1alpha2.SchemeGroupVersion.WithResource("tfjobs"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeflow().V1alpha2().TFJobs().Informer()}, nil
+//	case v1alpha2.SchemeGroupVersion.WithResource("tfjobs"):
+//		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeflow().V1alpha2().TFJobs().Informer()}, nil
 
-	}
+//	}
 
 	return nil, fmt.Errorf("no informer found for %v", resource)
 }

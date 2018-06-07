@@ -13,8 +13,8 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/cache"
 
-	informer "github.com/kubeflow/tf-operator/pkg/client/informers/externalversions/kubeflow/v1alpha2"
-	lister "github.com/kubeflow/tf-operator/pkg/client/listers/kubeflow/v1alpha2"
+	informer "github.com/jzp1025/mx-operator/pkg/client/informers/externalversions/kubeflow/v1alpha2"
+	lister "github.com/jzp1025/mx-operator/pkg/client/listers/kubeflow/v1alpha2"
 )
 
 type UnstructuredInformer struct {

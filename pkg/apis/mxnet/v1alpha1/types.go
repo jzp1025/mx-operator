@@ -20,14 +20,14 @@ import (
 )
 
 const (
-	CRDKind       = "tfjob"
-	CRDKindPlural = "tfjobs"
+	CRDKind       = "mxjob"
+	CRDKindPlural = "mxjobs"
 	CRDGroup      = "kubeflow.org"
 	CRDVersion    = "v1alpha1"
 	// Value of the APP label that gets applied to a lot of entities.
-	AppLabel = "tensorflow-job"
+	AppLabel = "mxnet-job"
 	// Defaults for the Spec
-	TFPort   = 2222
+	MXPort   = 2222
 	Replicas = 1
 )
 
@@ -37,23 +37,23 @@ const (
 // +resource:path=tfjob
 
 // TFJob describes tfjob info
-type TFJob struct {
+type MXJob struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              TFJobSpec   `json:"spec"`
-	Status            TFJobStatus `json:"status"`
+	Spec              MXJobSpec   `json:"spec"`
+	Status            MXJobStatus `json:"status"`
 }
 
 // TFJobSpec structure for storing the TFJob specifications
-type TFJobSpec struct {
+type MXJobSpec struct {
 	// TODO(jlewi): Can we we get rid of this and use some value from Kubernetes or a random ide.
 	RuntimeId string
 
 	// ReplicaSpecs specifies the TF replicas to run.
-	ReplicaSpecs []*TFReplicaSpec `json:"replicaSpecs"`
+	ReplicaSpecs []*MXReplicaSpec `json:"replicaSpecs"`
 
 	// TFImage defines the tensorflow docker image that should be used for default parameter server
-	TFImage string `json:"tfImage,omitempty"`
+	MXImage string `json:"mxImage,omitempty"`
 
 	// TerminationPolicy specifies the condition that the tfjob should be considered finished.
 	TerminationPolicy *TerminationPolicySpec `json:"terminationPolicy,omitempty"`
@@ -75,22 +75,22 @@ type ChiefSpec struct {
 }
 
 // TFReplicaType determines how a set of TF processes are handled.
-type TFReplicaType string
+type MXReplicaType string
 
 const (
-	MASTER TFReplicaType = "MASTER"
-	PS     TFReplicaType = "PS"
-	WORKER TFReplicaType = "WORKER"
+	MASTER MXReplicaType = "MASTER"
+	SERVER MXReplicaType = "SERVER"
+	WORKER MXReplicaType = "WORKER"
 )
 
 const (
-	DefaultTFContainer string = "tensorflow"
-	DefaultTFImage     string = "tensorflow/tensorflow:1.3.0"
+	DefaultMXContainer string = "mxnet"
+	DefaultMXImage     string = "jzp1025/mxnet"
 )
 
 // TODO(jlewi): We probably want to add a name field. This would allow us to have more than 1 type of each worker.
 // // TFReplicaSpec might be useful if you wanted to have a separate set of workers to do eval.
-type TFReplicaSpec struct {
+type MXReplicaSpec struct {
 	// Replicas is the number of desired replicas.
 	// This is a pointer to distinguish between explicit zero and unspecified.
 	// Defaults to 1.
@@ -99,20 +99,20 @@ type TFReplicaSpec struct {
 	Replicas *int32              `json:"replicas,omitempty" protobuf:"varint,1,opt,name=replicas"`
 	Template *v1.PodTemplateSpec `json:"template,omitempty" protobuf:"bytes,3,opt,name=template"`
 	// TFPort is the port to use for TF services.
-	TFPort        *int32 `json:"tfPort,omitempty" protobuf:"varint,1,opt,name=tfPort"`
-	TFReplicaType `json:"tfReplicaType"`
+	MXPort        *int32 `json:"tfPort,omitempty" protobuf:"varint,1,opt,name=tfPort"`
+	MXReplicaType `json:"mxReplicaType"`
 }
 
 // TFJobPhase is a enum to store the phase of tf job
-type TFJobPhase string
+type MXJobPhase string
 
 const (
-	TFJobPhaseNone     TFJobPhase = ""
-	TFJobPhaseCreating TFJobPhase = "Creating"
-	TFJobPhaseRunning  TFJobPhase = "Running"
-	TFJobPhaseCleanUp  TFJobPhase = "CleanUp"
-	TFJobPhaseFailed   TFJobPhase = "Failed"
-	TFJobPhaseDone     TFJobPhase = "Done"
+	MXJobPhaseNone     MXJobPhase = ""
+	MXJobPhaseCreating MXJobPhase = "Creating"
+	MXJobPhaseRunning  MXJobPhase = "Running"
+	MXJobPhaseCleanUp  MXJobPhase = "CleanUp"
+	MXJobPhaseFailed   MXJobPhase = "Failed"
+	MXJobPhaseDone     MXJobPhase = "Done"
 )
 
 // State is a enum to store the state of tf job
@@ -126,16 +126,16 @@ const (
 )
 
 // TFJobStatus is a structure for storing the status of tf jobs
-type TFJobStatus struct {
+type MXJobStatus struct {
 	// Phase is the TFJob running phase
-	Phase  TFJobPhase `json:"phase"`
+	Phase  MXJobPhase `json:"phase"`
 	Reason string     `json:"reason"`
 
 	// State indicates the state of the job.
 	State State `json:"state"`
 
 	// ReplicaStatuses specifies the status of each TF replica.
-	ReplicaStatuses []*TFReplicaStatus `json:"replicaStatuses"`
+	ReplicaStatuses []*MXReplicaStatus `json:"replicaStatuses"`
 }
 
 // ReplicaState is a enum to store the status of replica
@@ -149,8 +149,8 @@ const (
 )
 
 // TFReplicaStatus  is a structure for storing the status of tf replica
-type TFReplicaStatus struct {
-	TFReplicaType `json:"tf_replica_type"`
+type MXReplicaStatus struct {
+	MXReplicaType `json:"mx_replica_type"`
 
 	// State is the overall state of the replica
 	State ReplicaState `json:"state"`
@@ -163,13 +163,13 @@ type TFReplicaStatus struct {
 // +resource:path=tfjobs
 
 // TFJobList is a list of TFJobs clusters.
-type TFJobList struct {
+type MXJobList struct {
 	metav1.TypeMeta `json:",inline"`
 	// Standard list metadata
 	// More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#metadata
 	metav1.ListMeta `json:"metadata,omitempty"`
 	// Items is a list of TFJobs
-	Items []TFJob `json:"items"`
+	Items []MXJob `json:"items"`
 }
 
 // ControllerConfig is a structure for storing the controller configuration

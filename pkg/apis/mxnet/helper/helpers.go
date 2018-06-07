@@ -17,8 +17,8 @@ package helper
 import (
 	"fmt"
 
-	tfv1 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha1"
-	"github.com/kubeflow/tf-operator/pkg/util"
+	mxv1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
+	"github.com/jzp1025/mx-operator/pkg/util"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -26,36 +26,36 @@ import (
 
 var (
 	groupVersionKind = schema.GroupVersionKind{
-		Group:   tfv1.GroupName,
-		Version: tfv1.GroupVersion,
-		Kind:    tfv1.TFJobResourceKind,
+		Group:   mxv1.GroupName,
+		Version: mxv1.GroupVersion,
+		Kind:    mxv1.MXJobResourceKind,
 	}
 )
 
 // AsOwner make OwnerReference according to the parameter
-func AsOwner(tfJob *tfv1.TFJob) metav1.OwnerReference {
+func AsOwner(mxJob *mxv1.MXJob) metav1.OwnerReference {
 	trueVar := true
 	// Both api.OwnerReference and metatypes.OwnerReference are combined into that.
 	return metav1.OwnerReference{
 		APIVersion:         groupVersionKind.GroupVersion().String(),
 		Kind:               groupVersionKind.Kind,
-		Name:               tfJob.ObjectMeta.Name,
-		UID:                tfJob.ObjectMeta.UID,
+		Name:               mxJob.ObjectMeta.Name,
+		UID:                mxJob.ObjectMeta.UID,
 		Controller:         &trueVar,
 		BlockOwnerDeletion: &trueVar,
 	}
 }
 
-// ConfigureAcceleratorsForTFJobSpec adds any accelerator specific configuration to the pods.
-func ConfigureAcceleratorsForTFJobSpec(c *tfv1.TFJobSpec, accelerators map[string]tfv1.AcceleratorConfig) error {
+// ConfigureAcceleratorsForMXJobSpec adds any accelerator specific configuration to the pods.
+func ConfigureAcceleratorsForMXJobSpec(c *mxv1.MXJobSpec, accelerators map[string]mxv1.AcceleratorConfig) error {
 	for _, r := range c.ReplicaSpecs {
 		if r.Template == nil {
 			return fmt.Errorf("Replica is missing Template; %v", util.Pformat(r))
 		}
 		for i, c := range r.Template.Spec.Containers {
-			if c.Name == tfv1.DefaultTFContainer {
+			if c.Name == mxv1.DefaultMXContainer {
 				// Identify the accelerators attached to this container.
-				a := map[string]tfv1.AcceleratorConfig{}
+				a := map[string]mxv1.AcceleratorConfig{}
 
 				lists := []v1.ResourceList{c.Resources.Limits, c.Resources.Requests}
 				for _, resources := range lists {
@@ -105,14 +105,14 @@ func ConfigureAcceleratorsForTFJobSpec(c *tfv1.TFJobSpec, accelerators map[strin
 
 // Cleanup cleans up user passed spec, e.g. defaulting, transforming fields.
 // TODO: move this to admission controller
-func Cleanup(c *tfv1.TFJobSpec) {
+func Cleanup(c *mxv1.MXJobSpec) {
 	// TODO(jlewi): Add logic to cleanup user provided spec; e.g. by filling in defaults.
 	// We should have default container images so user doesn't have to provide these.
 }
 
 // CRDName returns the custom resource definition name which is combination of kind and group
 func CRDName() string {
-	return fmt.Sprintf("%s.%s", tfv1.CRDKindPlural, tfv1.CRDGroup)
+	return fmt.Sprintf("%s.%s", mxv1.CRDKindPlural, mxv1.CRDGroup)
 }
 
 // scalingReason returns the reason for scaling the cluster size

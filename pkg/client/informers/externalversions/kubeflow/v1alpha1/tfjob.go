@@ -21,10 +21,10 @@ package v1alpha1
 import (
 	time "time"
 
-	tensorflow_v1alpha1 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha1"
-	versioned "github.com/kubeflow/tf-operator/pkg/client/clientset/versioned"
-	internalinterfaces "github.com/kubeflow/tf-operator/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/kubeflow/tf-operator/pkg/client/listers/kubeflow/v1alpha1"
+	mxnet_v1alpha1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
+	versioned "github.com/jzp1025/mx-operator/pkg/client/clientset/versioned"
+	internalinterfaces "github.com/jzp1025/mx-operator/pkg/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/jzp1025/mx-operator/pkg/client/listers/kubeflow/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -33,42 +33,42 @@ import (
 
 // TFJobInformer provides access to a shared informer and lister for
 // TFJobs.
-type TFJobInformer interface {
+type MXJobInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.TFJobLister
+	Lister() v1alpha1.MXJobLister
 }
 
-type tFJobInformer struct {
+type mXJobInformer struct {
 	factory internalinterfaces.SharedInformerFactory
 }
 
 // NewTFJobInformer constructs a new informer for TFJob type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewTFJobInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+func NewMXJobInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
-				return client.KubeflowV1alpha1().TFJobs(namespace).List(options)
+				return client.KubeflowV1alpha1().MXJobs(namespace).List(options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
-				return client.KubeflowV1alpha1().TFJobs(namespace).Watch(options)
+				return client.KubeflowV1alpha1().MXJobs(namespace).Watch(options)
 			},
 		},
-		&tensorflow_v1alpha1.TFJob{},
+		&tensorflow_v1alpha1.MXJob{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func defaultTFJobInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewTFJobInformer(client, v1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+func defaultMXJobInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewMXJobInformer(client, v1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 }
 
-func (f *tFJobInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&tensorflow_v1alpha1.TFJob{}, defaultTFJobInformer)
+func (f *mXJobInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&mxnet_v1alpha1.MXJob{}, defaultMXJobInformer)
 }
 
-func (f *tFJobInformer) Lister() v1alpha1.TFJobLister {
-	return v1alpha1.NewTFJobLister(f.Informer().GetIndexer())
+func (f *mXJobInformer) Lister() v1alpha1.MXJobLister {
+	return v1alpha1.NewMXJobLister(f.Informer().GetIndexer())
 }

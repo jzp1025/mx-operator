@@ -27,7 +27,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	tfv1alpha1 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha1"
+	mxv1alpha1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
 )
 
 // RecommendedConfigPathEnvVar is a environment variable for path configuration
@@ -96,8 +96,8 @@ func JobListOpt(clusterName string) metav1.ListOptions {
 func LabelsForJob(jobName string) map[string]string {
 	return map[string]string{
 		// TODO(jlewi): Need to set appropriate labels for TF.
-		"tf_job": jobName,
-		"app":    tfv1alpha1.AppLabel,
+		"mx_job": jobName,
+		"app":    mxv1alpha1.AppLabel,
 	}
 }
 

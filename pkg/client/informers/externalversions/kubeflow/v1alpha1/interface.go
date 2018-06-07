@@ -19,13 +19,13 @@
 package v1alpha1
 
 import (
-	internalinterfaces "github.com/kubeflow/tf-operator/pkg/client/informers/externalversions/internalinterfaces"
+	internalinterfaces "github.com/jzp1025/mx-operator/pkg/client/informers/externalversions/internalinterfaces"
 )
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
 	// TFJobs returns a TFJobInformer.
-	TFJobs() TFJobInformer
+	MXJobs() MXJobInformer
 }
 
 type version struct {
@@ -38,6 +38,6 @@ func New(f internalinterfaces.SharedInformerFactory) Interface {
 }
 
 // TFJobs returns a TFJobInformer.
-func (v *version) TFJobs() TFJobInformer {
-	return &tFJobInformer{factory: v.SharedInformerFactory}
+func (v *version) MXJobs() MXJobInformer {
+	return &mXJobInformer{factory: v.SharedInformerFactory}
 }

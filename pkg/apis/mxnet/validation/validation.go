@@ -18,12 +18,12 @@ import (
 	"errors"
 	"fmt"
 
-	tfv1 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha1"
-	"github.com/kubeflow/tf-operator/pkg/util"
+	mxv1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
+	"github.com/jzp1025/mx-operator/pkg/util"
 )
 
 // ValidateTFJobSpec checks that the TFJobSpec is valid.
-func ValidateTFJobSpec(c *tfv1.TFJobSpec) error {
+func ValidateMXJobSpec(c *mxv1.MXJobSpec) error {
 	if c.TerminationPolicy == nil || c.TerminationPolicy.Chief == nil {
 		return fmt.Errorf("invalid termination policy: %v", c.TerminationPolicy)
 	}
@@ -37,37 +37,37 @@ func ValidateTFJobSpec(c *tfv1.TFJobSpec) error {
 			return fmt.Errorf("Replica is missing Template; %v", util.Pformat(r))
 		}
 
-		if r.TFReplicaType == tfv1.TFReplicaType(c.TerminationPolicy.Chief.ReplicaName) {
+		if r.MXReplicaType == mxv1.MXReplicaType(c.TerminationPolicy.Chief.ReplicaName) {
 			chiefExists = true
 		}
 
-		if r.TFPort == nil {
-			return errors.New("tfReplicaSpec.TFPort can't be nil.")
+		if r.MXPort == nil {
+			return errors.New("mxReplicaSpec.MXPort can't be nil.")
 		}
 
 		// Make sure the replica type is valid.
-		validReplicaTypes := []tfv1.TFReplicaType{tfv1.MASTER, tfv1.PS, tfv1.WORKER}
+		validReplicaTypes := []mxv1.MXReplicaType{mxv1.MASTER, mxv1.SERVER, mxv1.WORKER}
 
 		isValidReplicaType := false
 		for _, t := range validReplicaTypes {
-			if t == r.TFReplicaType {
+			if t == r.MXReplicaType {
 				isValidReplicaType = true
 				break
 			}
 		}
 
 		if !isValidReplicaType {
-			return fmt.Errorf("tfReplicaSpec.TFReplicaType is %v but must be one of %v", r.TFReplicaType, validReplicaTypes)
+			return fmt.Errorf("mxReplicaSpec.MXReplicaType is %v but must be one of %v", r.MXReplicaType, validReplicaTypes)
 		}
 
 		for _, c := range r.Template.Spec.Containers {
-			if c.Name == tfv1.DefaultTFContainer {
+			if c.Name == mxv1.DefaultMXContainer {
 				found = true
 				break
 			}
 		}
 		if !found {
-			return fmt.Errorf("Replica type %v is missing a container named %s", r.TFReplicaType, tfv1.DefaultTFContainer)
+			return fmt.Errorf("Replica type %v is missing a container named %s", r.MXReplicaType, mxv1.DefaultMXContainer)
 		}
 	}
 

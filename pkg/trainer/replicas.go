@@ -28,11 +28,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 
-	tfv1alpha1 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha1"
-	"github.com/kubeflow/tf-operator/pkg/util/k8sutil"
+	mxv1alpha1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
+	"github.com/jzp1025/mx-operator/pkg/util/k8sutil"
 	// TOOO(jlewi): Rename to apiErrors
-	"github.com/kubeflow/tf-operator/pkg/apis/tensorflow/helper"
-	"github.com/kubeflow/tf-operator/pkg/util"
+	"github.com/jzp1025/mx-operator/pkg/apis/mxnet/helper"
+	"github.com/jzp1025/mx-operator/pkg/util"
 )
 
 const (
@@ -42,27 +42,27 @@ const (
 )
 
 // TFReplicaSet is a set of TF processes all acting as the same role (e.g. worker
-type TFReplicaSet struct {
+type MXReplicaSet struct {
 	ClientSet kubernetes.Interface
 	recorder  record.EventRecorder
 	// Job is a pointer to the TrainingJob to which this replica belongs.
 	Job  *TrainingJob
-	Spec tfv1alpha1.TFReplicaSpec
+	Spec mxv1alpha1.MXReplicaSpec
 
 	// contextLogger is a logger to use for logging information about this replica.
 	contextLogger *log.Entry
 }
 
 // TFReplicaSetInterface is an interface for managing a set of replicas.
-type TFReplicaSetInterface interface {
+type MXReplicaSetInterface interface {
 	Create() error
 	Delete() error
-	GetStatus() (tfv1alpha1.TFReplicaStatus, error)
+	GetStatus() (mxv1alpha1.MXReplicaStatus, error)
 }
 
 // TFConfig is a struct representing the TensorFlow config. This struct is turned into an environment
 // which is used by TensorFlow processes to configure themselves.
-type TFConfig struct {
+type MXConfig struct {
 	// Cluster represents a TensorFlow ClusterSpec.
 	// See: https://www.tensorflow.org/api_docs/python/tf/train/ClusterSpechttps://www.tensorflow.org/api_docs/python/tf/train/ClusterSpec
 	Cluster ClusterSpec `json:"cluster"`
@@ -73,43 +73,43 @@ type TFConfig struct {
 }
 
 // NewTFReplicaSet returns TFReplicaSet object for existing replica
-func NewTFReplicaSet(clientSet kubernetes.Interface, recorder record.EventRecorder, tfReplicaSpec tfv1alpha1.TFReplicaSpec, job *TrainingJob) (*TFReplicaSet, error) {
-	if tfReplicaSpec.TFReplicaType == tfv1alpha1.MASTER && *tfReplicaSpec.Replicas != 1 {
+func NewMXReplicaSet(clientSet kubernetes.Interface, recorder record.EventRecorder, mxReplicaSpec mxv1alpha1.MXReplicaSpec, job *TrainingJob) (*MXReplicaSet, error) {
+	if mxReplicaSpec.MXReplicaType == mxv1alpha1.MASTER && *mxReplicaSpec.Replicas != 1 {
 		return nil, errors.New("The MASTER must have Replicas = 1")
 	}
 
-	if tfReplicaSpec.TFPort == nil {
-		return nil, errors.New("tfReplicaSpec.TFPort can't be nil.")
+	if mxReplicaSpec.MXPort == nil {
+		return nil, errors.New("mxReplicaSpec.MXPort can't be nil.")
 	}
 
-	if tfReplicaSpec.Template == nil && tfReplicaSpec.TFReplicaType != tfv1alpha1.PS {
-		return nil, fmt.Errorf("tfReplicatfv1alpha1.Template can't be nil for replica type %v.", tfReplicaSpec.TFReplicaType)
+	if mxReplicaSpec.Template == nil && mxReplicaSpec.MXReplicaType != mxv1alpha1.SERVER {
+		return nil, fmt.Errorf("mxReplicamxv1alpha1.Template can't be nil for replica type %v.", mxReplicaSpec.MXReplicaType)
 	}
 
 	// Make sure the replica type is valid.
-	validReplicaTypes := []tfv1alpha1.TFReplicaType{tfv1alpha1.MASTER, tfv1alpha1.PS, tfv1alpha1.WORKER}
+	validReplicaTypes := []mxv1alpha1.MXReplicaType{mxv1alpha1.MASTER, mxv1alpha1.SERVER, mxv1alpha1.WORKER}
 
 	isValidReplicaType := false
 	for _, t := range validReplicaTypes {
-		if t == tfReplicaSpec.TFReplicaType {
+		if t == mxReplicaSpec.MXReplicaType {
 			isValidReplicaType = true
 			break
 		}
 	}
 
 	if !isValidReplicaType {
-		return nil, fmt.Errorf("tfReplicaSpec.TFReplicaType is %v but must be one of %v", tfReplicaSpec.TFReplicaType, validReplicaTypes)
+		return nil, fmt.Errorf("mxReplicaSpec.MXReplicaType is %v but must be one of %v", mxReplicaSpec.MXReplicaType, validReplicaTypes)
 	}
 
-	return &TFReplicaSet{
+	return &MXReplicaSet{
 		ClientSet: clientSet,
 		recorder:  recorder,
 		Job:       job,
-		Spec:      tfReplicaSpec,
+		Spec:      mxReplicaSpec,
 		contextLogger: log.WithFields(log.Fields{
-			"job_type":    string(tfReplicaSpec.TFReplicaType),
+			"job_type":    string(mxReplicaSpec.MXReplicaType),
 			"runtime_id":  job.job.Spec.RuntimeId,
-			"tf_job_name": job.job.ObjectMeta.Name,
+			"mx_job_name": job.job.ObjectMeta.Name,
 			// We use job to match the key used in controller.go
 			// In controller.go we log the key used with the workqueue.
 			"job": job.job.ObjectMeta.Namespace + "/" + job.job.ObjectMeta.Name,
@@ -118,25 +118,25 @@ func NewTFReplicaSet(clientSet kubernetes.Interface, recorder record.EventRecord
 }
 
 // Labels returns the labels for this replica set.
-func (s *TFReplicaSet) Labels() KubernetesLabels {
+func (s *MXReplicaSet) Labels() KubernetesLabels {
 	return KubernetesLabels(map[string]string{
 		"kubeflow.org": "",
-		"job_type":     string(s.Spec.TFReplicaType),
+		"job_type":     string(s.Spec.MXReplicaType),
 		// runtime_id is set by Job.setup, which is called after the TFReplicaSet is created.
 		// this is why labels aren't a member variable.
 		"runtime_id":  s.Job.job.Spec.RuntimeId,
-		"tf_job_name": s.Job.job.ObjectMeta.Name})
+		"mx_job_name": s.Job.job.ObjectMeta.Name})
 }
 
 // LabelsByIndex returns the labels for a pod in this replica set.
-func (s *TFReplicaSet) LabelsByIndex(index int32) KubernetesLabels {
+func (s *MXReplicaSet) LabelsByIndex(index int32) KubernetesLabels {
 	labels := s.Labels()
 	labels["task_index"] = fmt.Sprintf("%v", index)
 	return labels
 }
 
 // CreateServiceWithIndex will create a new service with specify index
-func (s *TFReplicaSet) CreateServiceWithIndex(index int32) (*v1.Service, error) {
+func (s *MXReplicaSet) CreateServiceWithIndex(index int32) (*v1.Service, error) {
 	taskLabels := s.LabelsByIndex(index)
 
 	// Create the service.
@@ -155,8 +155,8 @@ func (s *TFReplicaSet) CreateServiceWithIndex(index int32) (*v1.Service, error) 
 			ClusterIP: "None",
 			Ports: []v1.ServicePort{
 				{
-					Name: "tf-port",
-					Port: *s.Spec.TFPort,
+					Name: "mx-port",
+					Port: *s.Spec.MXPort,
 				},
 			},
 		},
@@ -169,7 +169,7 @@ func (s *TFReplicaSet) CreateServiceWithIndex(index int32) (*v1.Service, error) 
 }
 
 // CreatePodWithIndex will create a new pod with specify index
-func (s *TFReplicaSet) CreatePodWithIndex(index int32) (*v1.Pod, error) {
+func (s *MXReplicaSet) CreatePodWithIndex(index int32) (*v1.Pod, error) {
 	taskLabels := s.LabelsByIndex(index)
 
 	pod := &v1.Pod{
@@ -200,19 +200,19 @@ func (s *TFReplicaSet) CreatePodWithIndex(index int32) (*v1.Pod, error) {
 	}
 
 	// Configure the TFCONFIG environment variable.
-	tfConfig := TFConfig{
+	mxConfig := MXConfig{
 		Cluster: s.Job.ClusterSpec(),
 		Task: TaskSpec{
-			Type:  strings.ToLower(string(s.Spec.TFReplicaType)),
+			Type:  strings.ToLower(string(s.Spec.MXReplicaType)),
 			Index: int(index),
 		},
 		// We need to set environment to cloud  otherwise it will default to local which isn't what we want.
 		Environment: "cloud",
 	}
 
-	tfConfigJson, err := json.Marshal(tfConfig)
+	mxConfigJson, err := json.Marshal(mxConfig)
 	if err != nil {
-		s.contextLogger.Errorf("Job: %v serializing tfConfig: %v return error; %v", s.Job.job.ObjectMeta.Name, util.Pformat(tfConfig), err)
+		s.contextLogger.Errorf("Job: %v serializing mxConfig: %v return error; %v", s.Job.job.ObjectMeta.Name, util.Pformat(mxConfig), err)
 		return nil, err
 	}
 
@@ -221,15 +221,15 @@ func (s *TFReplicaSet) CreatePodWithIndex(index int32) (*v1.Pod, error) {
 		// We can't get c in the loop variable because that would be by value so our modifications
 		// wouldn't have any effect.
 		c := &pod.Spec.Containers[i]
-		if c.Name != tfv1alpha1.DefaultTFContainer {
+		if c.Name != mxv1alpha1.DefaultMXContainer {
 			continue
 		}
 		if len(c.Env) == 0 {
 			c.Env = make([]v1.EnvVar, 0)
 		}
 		c.Env = append(c.Env, v1.EnvVar{
-			Name:  "TF_CONFIG",
-			Value: string(tfConfigJson),
+			Name:  "MX_CONFIG",
+			Value: string(mxConfigJson),
 		})
 	}
 
@@ -240,7 +240,7 @@ func (s *TFReplicaSet) CreatePodWithIndex(index int32) (*v1.Pod, error) {
 }
 
 // Delete deletes the replicas
-func (s *TFReplicaSet) Delete() error {
+func (s *MXReplicaSet) Delete() error {
 	selector, err := s.Labels().ToSelector()
 	if err != nil {
 		return err
@@ -284,16 +284,16 @@ func (s *TFReplicaSet) Delete() error {
 	}
 
 	// If the ConfigMap for the default parameter server exists, we delete it
-	s.contextLogger.Infof("Get ConfigMaps %v:%v", s.Job.job.ObjectMeta.Namespace, s.defaultPSConfigMapName())
-	_, err = s.ClientSet.CoreV1().ConfigMaps(s.Job.job.ObjectMeta.Namespace).Get(s.defaultPSConfigMapName(), meta_v1.GetOptions{})
+	s.contextLogger.Infof("Get ConfigMaps %v:%v", s.Job.job.ObjectMeta.Namespace, s.defaultSERVERConfigMapName())
+	_, err = s.ClientSet.CoreV1().ConfigMaps(s.Job.job.ObjectMeta.Namespace).Get(s.defaultSERVERConfigMapName(), meta_v1.GetOptions{})
 	if err != nil {
 		if !k8sutil.IsKubernetesResourceNotFoundError(err) {
-			s.contextLogger.Errorf("Error deleting ConfigMap %v; %v", s.defaultPSConfigMapName(), err)
+			s.contextLogger.Errorf("Error deleting ConfigMap %v; %v", s.defaultSERVERConfigMapName(), err)
 			failures = true
 		}
 	} else {
-		s.contextLogger.Infof("Delete ConfigMaps %v:%v", s.Job.job.ObjectMeta.Namespace, s.defaultPSConfigMapName())
-		err = s.ClientSet.CoreV1().ConfigMaps(s.Job.job.ObjectMeta.Namespace).Delete(s.defaultPSConfigMapName(), &meta_v1.DeleteOptions{})
+		s.contextLogger.Infof("Delete ConfigMaps %v:%v", s.Job.job.ObjectMeta.Namespace, s.defaultSERVERConfigMapName())
+		err = s.ClientSet.CoreV1().ConfigMaps(s.Job.job.ObjectMeta.Namespace).Delete(s.defaultSERVERConfigMapName(), &meta_v1.DeleteOptions{})
 		if err != nil {
 			s.contextLogger.Errorf("There was a problem deleting the ConfigMaps; %v", err)
 			failures = true
@@ -307,7 +307,7 @@ func (s *TFReplicaSet) Delete() error {
 }
 
 // replicaStatusFromPodList returns a status from a list of pods for a job.
-func replicaStatusFromPodList(l v1.PodList, name string) tfv1alpha1.ReplicaState {
+func replicaStatusFromPodList(l v1.PodList, name string) mxv1alpha1.ReplicaState {
 	var latest *v1.Pod
 	for _, i := range l.Items {
 		if latest == nil {
@@ -320,10 +320,10 @@ func replicaStatusFromPodList(l v1.PodList, name string) tfv1alpha1.ReplicaState
 	}
 
 	if latest == nil {
-		return tfv1alpha1.ReplicaStateRunning
+		return mxv1alpha1.ReplicaStateRunning
 	}
 
-	var tfState v1.ContainerState
+	var mxState v1.ContainerState
 
 	for _, i := range latest.Status.ContainerStatuses {
 		if i.Name != name {
@@ -331,44 +331,44 @@ func replicaStatusFromPodList(l v1.PodList, name string) tfv1alpha1.ReplicaState
 		}
 
 		// We need to decide whether to use the current state or the previous termination state.
-		tfState = i.State
+		mxState = i.State
 
 		// If the container previously terminated we will look at the termination to decide whether it is a retryable
 		// or permanenent error.
 		if i.LastTerminationState.Terminated != nil {
-			tfState = i.LastTerminationState
+			mxState = i.LastTerminationState
 		}
 	}
 
-	if tfState.Running != nil || tfState.Waiting != nil {
-		return tfv1alpha1.ReplicaStateRunning
+	if mxState.Running != nil || mxState.Waiting != nil {
+		return mxv1alpha1.ReplicaStateRunning
 	}
 
-	if tfState.Terminated != nil {
-		if tfState.Terminated.ExitCode == 0 {
-			return tfv1alpha1.ReplicaStateSucceeded
+	if mxState.Terminated != nil {
+		if mxState.Terminated.ExitCode == 0 {
+			return mxv1alpha1.ReplicaStateSucceeded
 		}
 
-		if isRetryableTerminationState(tfState.Terminated) {
+		if isRetryableTerminationState(mxState.Terminated) {
 			// Since its a retryable error just return RUNNING.
 			// We can just let Kubernetes restart the container to retry.
-			return tfv1alpha1.ReplicaStateRunning
+			return mxv1alpha1.ReplicaStateRunning
 		}
 
 		// TODO(wenzhel): Should consider to return more info about pod to users.
-		return tfv1alpha1.ReplicaStateFailed
+		return mxv1alpha1.ReplicaStateFailed
 	}
 
-	return tfv1alpha1.ReplicaStateUnknown
+	return mxv1alpha1.ReplicaStateUnknown
 }
 
 // GetSingleReplicaStatus returns status for a single replica
-func (s *TFReplicaSet) GetSingleReplicaStatus(index int32) tfv1alpha1.ReplicaState {
+func (s *MXReplicaSet) GetSingleReplicaStatus(index int32) mxv1alpha1.ReplicaState {
 	labels := s.LabelsByIndex(index)
 	selector, err := labels.ToSelector()
 	if err != nil {
 		s.contextLogger.Errorf("labels.ToSelector() error; %v", err)
-		return tfv1alpha1.ReplicaStateFailed
+		return mxv1alpha1.ReplicaStateFailed
 	}
 
 	// TODO(jlewi): Handle errors. We need to get the pod and looking at recent container exits.
@@ -379,22 +379,22 @@ func (s *TFReplicaSet) GetSingleReplicaStatus(index int32) tfv1alpha1.ReplicaSta
 
 	if err != nil {
 		// TODO(jlewi): Are there errors that should be treated as retryable errors?
-		return tfv1alpha1.ReplicaStateFailed
+		return mxv1alpha1.ReplicaStateFailed
 	}
 
-	status := replicaStatusFromPodList(*l, tfv1alpha1.DefaultTFContainer)
+	status := replicaStatusFromPodList(*l, mxv1alpha1.DefaultMXContainer)
 	return status
 }
 
 // GetStatus returns the status of the replica set.
-func (s *TFReplicaSet) GetStatus() (tfv1alpha1.TFReplicaStatus, error) {
-	status := tfv1alpha1.TFReplicaStatus{
-		TFReplicaType:  s.Spec.TFReplicaType,
-		State:          tfv1alpha1.ReplicaStateUnknown,
-		ReplicasStates: make(map[tfv1alpha1.ReplicaState]int),
+func (s *MXReplicaSet) GetStatus() (mxv1alpha1.MXReplicaStatus, error) {
+	status := mxv1alpha1.MXReplicaStatus{
+		MXReplicaType:  s.Spec.MXReplicaType,
+		State:          mxv1alpha1.ReplicaStateUnknown,
+		ReplicasStates: make(map[mxv1alpha1.ReplicaState]int),
 	}
 
-	increment := func(state tfv1alpha1.ReplicaState) {
+	increment := func(state mxv1alpha1.ReplicaState) {
 		v, ok := status.ReplicasStates[state]
 		if ok {
 			status.ReplicasStates[state] = v + 1
@@ -410,20 +410,20 @@ func (s *TFReplicaSet) GetStatus() (tfv1alpha1.TFReplicaStatus, error) {
 	// Determine the overall status for the replica set based on the status of the individual
 	// replicas.
 	// If any of the replicas failed mark the set as failed.
-	if _, ok := status.ReplicasStates[tfv1alpha1.ReplicaStateFailed]; ok {
-		status.State = tfv1alpha1.ReplicaStateFailed
+	if _, ok := status.ReplicasStates[mxv1alpha1.ReplicaStateFailed]; ok {
+		status.State = mxv1alpha1.ReplicaStateFailed
 		return status, nil
 	}
 
 	// If any replicas are RUNNING mark it as RUNNING.
-	if _, ok := status.ReplicasStates[tfv1alpha1.ReplicaStateRunning]; ok {
-		status.State = tfv1alpha1.ReplicaStateRunning
+	if _, ok := status.ReplicasStates[mxv1alpha1.ReplicaStateRunning]; ok {
+		status.State = mxv1alpha1.ReplicaStateRunning
 		return status, nil
 	}
 
 	// If all of the replicas succeeded consider it success.
-	if v, ok := status.ReplicasStates[tfv1alpha1.ReplicaStateSucceeded]; ok && int32(v) == *s.Spec.Replicas {
-		status.State = tfv1alpha1.ReplicaStateSucceeded
+	if v, ok := status.ReplicasStates[mxv1alpha1.ReplicaStateSucceeded]; ok && int32(v) == *s.Spec.Replicas {
+		status.State = mxv1alpha1.ReplicaStateSucceeded
 		return status, nil
 	}
 
@@ -431,7 +431,7 @@ func (s *TFReplicaSet) GetStatus() (tfv1alpha1.TFReplicaStatus, error) {
 }
 
 // SyncPods will try to check current pods for this TFReplicaSet and try to make it as desired.
-func (s *TFReplicaSet) SyncPods() error {
+func (s *MXReplicaSet) SyncPods() error {
 	for index := int32(0); index < *s.Spec.Replicas; index++ {
 
 		// Label to get all pods of this TFReplicaType + index
@@ -457,7 +457,7 @@ func (s *TFReplicaSet) SyncPods() error {
 		}
 
 		if len(pl.Items) == 0 {
-			s.contextLogger.Infof("Job %v missing pod for replica %v index %v, creating a new one.", s.Job.name(), string(s.Spec.TFReplicaType), index)
+			s.contextLogger.Infof("Job %v missing pod for replica %v index %v, creating a new one.", s.Job.name(), string(s.Spec.MXReplicaType), index)
 			// Create the pod
 			createdPod, err := s.CreatePodWithIndex(index)
 
@@ -485,7 +485,7 @@ func (s *TFReplicaSet) SyncPods() error {
 }
 
 // SyncServices will try to check current services for this TFReplicaSet and try to make it as desired.
-func (s *TFReplicaSet) SyncServices() error {
+func (s *MXReplicaSet) SyncServices() error {
 	for index := int32(0); index < *s.Spec.Replicas; index++ {
 		_, err := s.ClientSet.CoreV1().Services(s.Job.job.ObjectMeta.Namespace).Get(s.genName(index), meta_v1.GetOptions{})
 		if err != nil && k8s_errors.IsNotFound(err) {
@@ -517,7 +517,7 @@ func (s *TFReplicaSet) SyncServices() error {
 }
 
 // genName generates the name which is concatenation of jabName, TFReplicaType, job RunId and index
-func (s *TFReplicaSet) genName(index int32) string {
+func (s *MXReplicaSet) genName(index int32) string {
 	// Truncate tfjob name to 40 characters
 	// The whole job name should be compliant with the DNS_LABEL spec, up to a max length of 63 characters
 	// Thus genName(40 chars)-replicaType(6 chars)-runtimeId(4 chars)-index(4 chars), also leaving some spaces
@@ -526,11 +526,11 @@ func (s *TFReplicaSet) genName(index int32) string {
 }
 
 // genPodName generate a new pod name with random string
-func (s *TFReplicaSet) genPodName(index int32) string {
+func (s *MXReplicaSet) genPodName(index int32) string {
 	return s.genName(index) + "-" + util.RandString(5)
 }
 
 //  defaultPSConfigMapName returns the map default PS configuration map name using job's runtimeId
-func (s *TFReplicaSet) defaultPSConfigMapName() string {
+func (s *MXReplicaSet) defaultSERVERConfigMapName() string {
 	return fmt.Sprintf("cm-ps-%v", s.Job.job.Spec.RuntimeId)
 }

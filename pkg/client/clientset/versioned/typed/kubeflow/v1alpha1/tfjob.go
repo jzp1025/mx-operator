@@ -17,8 +17,8 @@
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha1"
-	scheme "github.com/kubeflow/tf-operator/pkg/client/clientset/versioned/scheme"
+	v1alpha1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
+	scheme "github.com/jzp1025/mx-operator/pkg/client/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -27,43 +27,43 @@ import (
 
 // TFJobsGetter has a method to return a TFJobInterface.
 // A group's client should implement this interface.
-type TFJobsGetter interface {
-	TFJobs(namespace string) TFJobInterface
+type MXJobsGetter interface {
+	MXJobs(namespace string) MXJobInterface
 }
 
 // TFJobInterface has methods to work with TFJob resources.
-type TFJobInterface interface {
-	Create(*v1alpha1.TFJob) (*v1alpha1.TFJob, error)
-	Update(*v1alpha1.TFJob) (*v1alpha1.TFJob, error)
+type MXJobInterface interface {
+	Create(*v1alpha1.MXJob) (*v1alpha1.MXJob, error)
+	Update(*v1alpha1.MXJob) (*v1alpha1.MXJob, error)
 	Delete(name string, options *v1.DeleteOptions) error
 	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
-	Get(name string, options v1.GetOptions) (*v1alpha1.TFJob, error)
-	List(opts v1.ListOptions) (*v1alpha1.TFJobList, error)
+	Get(name string, options v1.GetOptions) (*v1alpha1.MXJob, error)
+	List(opts v1.ListOptions) (*v1alpha1.MXJobList, error)
 	Watch(opts v1.ListOptions) (watch.Interface, error)
-	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.TFJob, err error)
-	TFJobExpansion
+	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.MXJob, err error)
+	MXJobExpansion
 }
 
 // tFJobs implements TFJobInterface
-type tFJobs struct {
+type mXJobs struct {
 	client rest.Interface
 	ns     string
 }
 
 // newTFJobs returns a TFJobs
-func newTFJobs(c *KubeflowV1alpha1Client, namespace string) *tFJobs {
-	return &tFJobs{
+func newMXJobs(c *KubeflowV1alpha1Client, namespace string) *mXJobs {
+	return &mXJobs{
 		client: c.RESTClient(),
 		ns:     namespace,
 	}
 }
 
 // Get takes name of the tFJob, and returns the corresponding tFJob object, and an error if there is any.
-func (c *tFJobs) Get(name string, options v1.GetOptions) (result *v1alpha1.TFJob, err error) {
-	result = &v1alpha1.TFJob{}
+func (c *mXJobs) Get(name string, options v1.GetOptions) (result *v1alpha1.MXJob, err error) {
+	result = &v1alpha1.MXJob{}
 	err = c.client.Get().
 		Namespace(c.ns).
-		Resource("tfjobs").
+		Resource("mxjobs").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
 		Do().
@@ -72,11 +72,11 @@ func (c *tFJobs) Get(name string, options v1.GetOptions) (result *v1alpha1.TFJob
 }
 
 // List takes label and field selectors, and returns the list of TFJobs that match those selectors.
-func (c *tFJobs) List(opts v1.ListOptions) (result *v1alpha1.TFJobList, err error) {
-	result = &v1alpha1.TFJobList{}
+func (c *mXJobs) List(opts v1.ListOptions) (result *v1alpha1.MXJobList, err error) {
+	result = &v1alpha1.MXJobList{}
 	err = c.client.Get().
 		Namespace(c.ns).
-		Resource("tfjobs").
+		Resource("mxjobs").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Do().
 		Into(result)
@@ -84,45 +84,45 @@ func (c *tFJobs) List(opts v1.ListOptions) (result *v1alpha1.TFJobList, err erro
 }
 
 // Watch returns a watch.Interface that watches the requested tFJobs.
-func (c *tFJobs) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *mXJobs) Watch(opts v1.ListOptions) (watch.Interface, error) {
 	opts.Watch = true
 	return c.client.Get().
 		Namespace(c.ns).
-		Resource("tfjobs").
+		Resource("mxjobs").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Watch()
 }
 
 // Create takes the representation of a tFJob and creates it.  Returns the server's representation of the tFJob, and an error, if there is any.
-func (c *tFJobs) Create(tFJob *v1alpha1.TFJob) (result *v1alpha1.TFJob, err error) {
-	result = &v1alpha1.TFJob{}
+func (c *mXJobs) Create(mXJob *v1alpha1.MXJob) (result *v1alpha1.MXJob, err error) {
+	result = &v1alpha1.MXJob{}
 	err = c.client.Post().
 		Namespace(c.ns).
-		Resource("tfjobs").
-		Body(tFJob).
+		Resource("mxjobs").
+		Body(mXJob).
 		Do().
 		Into(result)
 	return
 }
 
 // Update takes the representation of a tFJob and updates it. Returns the server's representation of the tFJob, and an error, if there is any.
-func (c *tFJobs) Update(tFJob *v1alpha1.TFJob) (result *v1alpha1.TFJob, err error) {
-	result = &v1alpha1.TFJob{}
+func (c *mXJobs) Update(mXJob *v1alpha1.MXJob) (result *v1alpha1.MXJob, err error) {
+	result = &v1alpha1.MXJob{}
 	err = c.client.Put().
 		Namespace(c.ns).
-		Resource("tfjobs").
-		Name(tFJob.Name).
-		Body(tFJob).
+		Resource("mxjobs").
+		Name(mXJob.Name).
+		Body(mXJob).
 		Do().
 		Into(result)
 	return
 }
 
 // Delete takes name of the tFJob and deletes it. Returns an error if one occurs.
-func (c *tFJobs) Delete(name string, options *v1.DeleteOptions) error {
+func (c *mXJobs) Delete(name string, options *v1.DeleteOptions) error {
 	return c.client.Delete().
 		Namespace(c.ns).
-		Resource("tfjobs").
+		Resource("mxjobs").
 		Name(name).
 		Body(options).
 		Do().
@@ -130,10 +130,10 @@ func (c *tFJobs) Delete(name string, options *v1.DeleteOptions) error {
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *tFJobs) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
+func (c *mXJobs) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
 	return c.client.Delete().
 		Namespace(c.ns).
-		Resource("tfjobs").
+		Resource("mxjobs").
 		VersionedParams(&listOptions, scheme.ParameterCodec).
 		Body(options).
 		Do().
@@ -141,11 +141,11 @@ func (c *tFJobs) DeleteCollection(options *v1.DeleteOptions, listOptions v1.List
 }
 
 // Patch applies the patch and returns the patched tFJob.
-func (c *tFJobs) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.TFJob, err error) {
-	result = &v1alpha1.TFJob{}
+func (c *mXJobs) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.MXJob, err error) {
+	result = &v1alpha1.MXJob{}
 	err = c.client.Patch(pt).
 		Namespace(c.ns).
-		Resource("tfjobs").
+		Resource("mxjobs").
 		SubResource(subresources...).
 		Name(name).
 		Body(data).

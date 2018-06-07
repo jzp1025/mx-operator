@@ -30,7 +30,7 @@ const (
 	// GroupName is the group name use in this package.
 	GroupName = "kubeflow.org"
 	// TFJobResourceKind is the kind name.
-	TFJobResourceKind = "TFJob"
+	TFJobResourceKind = "MXJob"
 	// GroupVersion is the version.
 	GroupVersion = "v1alpha1"
 )
@@ -53,8 +53,8 @@ func Resource(resource string) schema.GroupResource {
 // addKnownTypes adds the set of types defined in this package to the supplied scheme.
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
-		&TFJob{},
-		&TFJobList{},
+		&MXJob{},
+		&MXJobList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

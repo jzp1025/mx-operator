@@ -24,22 +24,22 @@ func addDefaultingFuncs(scheme *runtime.Scheme) error {
 }
 
 // SetDefaults_TFJob initializes any uninitialized values to default values
-func SetDefaults_TFJob(obj *TFJob) {
+func SetDefaults_MXJob(obj *MXJob) {
 	c := &obj.Spec
 
-	if c.TFImage == "" {
-		c.TFImage = DefaultTFImage
+	if c.MXImage == "" {
+		c.MXImage = DefaultMXImage
 	}
 
 	// Check that each replica has a TensorFlow container.
 	for _, r := range c.ReplicaSpecs {
 
-		if r.TFPort == nil {
-			r.TFPort = proto.Int32(TFPort)
+		if r.MXPort == nil {
+			r.MXPort = proto.Int32(MXPort)
 		}
 
-		if string(r.TFReplicaType) == "" {
-			r.TFReplicaType = MASTER
+		if string(r.MXReplicaType) == "" {
+			r.MXReplicaType = MASTER
 		}
 
 		if r.Replicas == nil {

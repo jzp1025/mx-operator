@@ -19,32 +19,32 @@ import (
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
-	tfv1 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha1"
-	"github.com/kubeflow/tf-operator/pkg/util"
+	mxv1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
+	"github.com/jzp1025/mx-operator/pkg/util"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 func TestAddAccelertor(t *testing.T) {
 	type testCase struct {
-		in       *tfv1.TFJobSpec
-		expected *tfv1.TFJobSpec
-		config   map[string]tfv1.AcceleratorConfig
+		in       *mxv1.TFJobSpec
+		expected *mxv1.TFJobSpec
+		config   map[string]mxv1.AcceleratorConfig
 	}
 
 	testCases := []testCase{
 		// Case 1 checks that we look at requests.
 		{
-			in: &tfv1.TFJobSpec{
-				ReplicaSpecs: []*tfv1.TFReplicaSpec{
+			in: &mxv1.MXJobSpec{
+				ReplicaSpecs: []*mxv1.MXReplicaSpec{
 					{
 						Replicas: proto.Int32(2),
-						TFPort:   proto.Int32(10),
+						MXPort:   proto.Int32(10),
 						Template: &v1.PodTemplateSpec{
 							Spec: v1.PodSpec{
 								Containers: []v1.Container{
 									{
-										Name: "tensorflow",
+										Name: "mxnet",
 										Resources: v1.ResourceRequirements{
 											Requests: map[v1.ResourceName]resource.Quantity{
 												"nvidia-gpu": resource.MustParse("1"),
@@ -54,7 +54,7 @@ func TestAddAccelertor(t *testing.T) {
 								},
 							},
 						},
-						TFReplicaType: tfv1.PS,
+						MXReplicaType: mxv1.PS,
 					},
 				},
 			},
