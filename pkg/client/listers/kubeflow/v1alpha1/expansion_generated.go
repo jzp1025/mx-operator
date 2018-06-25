@@ -18,10 +18,10 @@
 
 package v1alpha1
 
-// TFJobListerExpansion allows custom methods to be added to
-// TFJobLister.
+// MXJobListerExpansion allows custom methods to be added to
+// MXJobLister.
 type MXJobListerExpansion interface{}
 
-// TFJobNamespaceListerExpansion allows custom methods to be added to
-// TFJobNamespaceLister.
+// MXJobNamespaceListerExpansion allows custom methods to be added to
+// MXJobNamespaceLister.
 type MXJobNamespaceListerExpansion interface{}

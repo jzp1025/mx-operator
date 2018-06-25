@@ -7,17 +7,19 @@ This binary is primarily intended for use in managing resources for our tests.
 import argparse
 import datetime
 import logging
+import re
+import retrying
 import subprocess
 import time
 import uuid
 
+from kubeflow.testing import util
 from kubernetes import client as k8s_client
 from kubernetes.client import rest
 from googleapiclient import discovery
 from google.cloud import storage  # pylint: disable=no-name-in-module
 
 from py import test_util
-from py import util
 
 
 def _setup_namespace(api_client, name):
@@ -46,6 +48,7 @@ def _setup_namespace(api_client, name):
 
 # TODO(jlewi): We should probably make this a reusable function since a
 # lot of test code code use it.
+@retrying.retry
 def ks_deploy(app_dir, component, params, env=None, account=None):
   """Deploy the specified ksonnet component.
 
@@ -76,7 +79,11 @@ def ks_deploy(app_dir, component, params, env=None, account=None):
 
   logging.info("Using app directory: %s", app_dir)
 
-  util.run(["ks", "env", "add", env], cwd=app_dir)
+  try:
+    util.run(["ks", "env", "add", env], cwd=app_dir)
+  except subprocess.CalledProcessError as e:
+    if not re.search(".*environment.*already exists.*", e.output):
+      raise
 
   for k, v in params.iteritems():
     util.run(
@@ -88,7 +95,7 @@ def ks_deploy(app_dir, component, params, env=None, account=None):
   util.run(apply_command, cwd=app_dir)
 
 
-def setup(args):
+def setup_cluster(args):
   """Setup a GKE cluster for TensorFlow jobs.
 
   Args:
@@ -141,14 +148,6 @@ def setup(args):
   try:
     start = time.time()
 
-    params = {
-      "tfJobImage": args.image,
-      "name": "kubeflow-core",
-      "namespace": args.namespace,
-    }
-
-    component = "core"
-
     account = util.run_and_output(
       ["gcloud", "config", "get-value", "account", "--quiet"]).strip()
     logging.info("Using GCP account %s", account)
@@ -158,17 +157,84 @@ def setup(args):
     ])
 
     _setup_namespace(api_client, args.namespace)
-    ks_deploy(args.test_app_dir, component, params, account=account)
 
     # Setup GPUs.
     util.setup_cluster(api_client)
 
-    # Verify that the TfJob operator is actually deployed.
-    tf_job_deployment_name = "tf-job-operator"
-    logging.info("Verifying TfJob controller started.")
+  # Reraise the exception so that the step fails because there's no point
+  # continuing the test.
+  except subprocess.CalledProcessError as e:
+    t.failure = "setup-cluster failed;\n" + (e.output or "")
+    raise
+  except util.TimeoutError as e:
+    t.failure = e.message
+    raise
+  finally:
+    t.time = time.time() - start
+    t.name = "setup-cluster"
+    t.class_name = "GKE"
+    gcs_client = storage.Client(project=args.project)
+    test_util.create_junit_xml_file([t], args.junit_path, gcs_client)
 
-    # TODO(jlewi): We should verify the image of the operator is the correct.
-    util.wait_for_deployment(api_client, args.namespace, tf_job_deployment_name)
+
+def setup_kubeflow(args):
+  """Setup Kubeflow.
+
+  Args:
+    args: Command line arguments that control the setup process.
+  """
+  project = args.project
+  cluster_name = args.cluster
+  zone = args.zone
+
+  util.configure_kubectl(project, zone, cluster_name)
+
+  util.load_kube_config()
+  # Create an API client object to talk to the K8s master.
+  api_client = k8s_client.ApiClient()
+
+  t = test_util.TestCase()
+  try:
+    start = time.time()
+
+    params = {
+      "tfJobImage": args.image,
+      "name": "kubeflow-core",
+      "namespace": args.namespace,
+      "tfJobVersion":  args.tf_job_version,
+    }
+
+    component = "core"
+
+    account = util.run_and_output(
+      ["gcloud", "config", "get-value", "account", "--quiet"]).strip()
+    logging.info("Using GCP account %s", account)
+
+    ks_deploy(args.test_app_dir, component, params, account=account)
+
+    # Verify that the TfJob operator is actually deployed.
+    if args.tf_job_version == "v1alpha1":
+      tf_job_deployment_name = "tf-job-operator"
+    elif args.tf_job_version == "v1alpha2":
+      tf_job_deployment_name = "tf-job-operator-v1alpha2"
+    else:
+      raise ValueError(
+        "Unrecognized value for tf_job_version %s" % args.tf_job_version)
+    logging.info("Verifying TfJob deployment %s started.",
+                 tf_job_deployment_name)
+
+    # TODO(jlewi): We should verify the image of the operator is the correct
+    # one.
+    try:
+      util.wait_for_deployment(api_client, args.namespace,
+                               tf_job_deployment_name)
+    finally:
+      # Run kubectl describe to get useful information about the deployment.
+      # This will help troubleshoot any errors.
+      util.run(["kubectl", "-n", args.namespace, "describe", "deploy",
+                tf_job_deployment_name])
+      util.run(["kubectl", "-n", args.namespace, "describe", "pods", "-l",
+                "name=tf-job-operator"])
 
   # Reraise the exception so that the step fails because there's no point
   # continuing the test.
@@ -184,7 +250,6 @@ def setup(args):
     t.class_name = "GKE"
     gcs_client = storage.Client(project=args.project)
     test_util.create_junit_xml_file([t], args.junit_path, gcs_client)
-
 
 def teardown(args):
   """Teardown the resources."""
@@ -224,6 +289,8 @@ def main():  # pylint: disable=too-many-locals
 
   util.maybe_activate_service_account()
 
+  now = datetime.datetime.now()
+
   # create the top-level parser
   parser = argparse.ArgumentParser(description="Setup clusters for testing.")
   subparsers = parser.add_subparsers()
@@ -232,7 +299,7 @@ def main():  # pylint: disable=too-many-locals
   # setup
   #
   parser_setup = subparsers.add_parser(
-    "setup", help="Setup a cluster for testing.")
+    "setup_cluster", help="Setup a cluster for testing.")
 
   parser_setup.add_argument(
     "--accelerator",
@@ -240,24 +307,40 @@ def main():  # pylint: disable=too-many-locals
     action="append",
     help="Accelerator to add to the cluster. Should be of the form type=count.")
 
-  parser_setup.set_defaults(func=setup)
-  add_common_args(parser_setup)
-
-  parser_setup.add_argument(
-    "--test_app_dir",
-    help="The directory containing the ksonnet app used for testing.",
-  )
-
-  now = datetime.datetime.now()
   parser_setup.add_argument(
     "--namespace",
     default="kubeflow-" + now.strftime("%m%d-%H%M-") + uuid.uuid4().hex[0:4],
     help="The directory containing the ksonnet app used for testing.",
   )
+  parser_setup.set_defaults(func=setup_cluster)
+  add_common_args(parser_setup)
 
-  parser_setup.add_argument(
+  parser_kubeflow = subparsers.add_parser(
+    "setup_kubeflow", help="Deploy Kubeflow for testing.")
+
+  parser_kubeflow.add_argument(
+    "--tf_job_version",
+    dest="tf_job_version",
+    help="Which version of the TFJobOperator to deploy.")
+
+  parser_kubeflow.set_defaults(func=setup_kubeflow)
+
+  parser_kubeflow.add_argument(
+    "--namespace",
+    default="kubeflow-" + now.strftime("%m%d-%H%M-") + uuid.uuid4().hex[0:4],
+    help="The directory containing the ksonnet app used for testing.",
+  )
+
+  parser_kubeflow.add_argument(
     "--image",
     help="The image to use",
+  )
+
+  add_common_args(parser_kubeflow)
+
+  parser_kubeflow.add_argument(
+    "--test_app_dir",
+    help="The directory containing the ksonnet app used for testing.",
   )
 
   #############################################################################

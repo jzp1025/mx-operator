@@ -34,12 +34,13 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
-	tfv1alpha2 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha2"
+	tfv1alpha2 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha2"
 	tfjobclientset "github.com/kubeflow/tf-operator/pkg/client/clientset/versioned"
 	tfjobscheme "github.com/kubeflow/tf-operator/pkg/client/clientset/versioned/scheme"
 	tfjobinformers "github.com/kubeflow/tf-operator/pkg/client/informers/externalversions"
 	tfjobinformersv1alpha2 "github.com/kubeflow/tf-operator/pkg/client/informers/externalversions/kubeflow/v1alpha2"
 	tfjoblisters "github.com/kubeflow/tf-operator/pkg/client/listers/kubeflow/v1alpha2"
+	"github.com/kubeflow/tf-operator/pkg/control"
 )
 
 const (
@@ -86,7 +87,7 @@ type TFJobController struct {
 	podControl controller.PodControlInterface
 
 	// serviceControl is used to add or delete services.
-	serviceControl ServiceControlInterface
+	serviceControl control.ServiceControlInterface
 
 	// kubeClientSet is a standard kubernetes clientset.
 	kubeClientSet kubeclientset.Interface
@@ -171,12 +172,12 @@ func NewTFJobController(
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeClientSet.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: controllerName})
 
-	realPodControl := controller.RealPodControl{
+	realPodControl := control.RealPodControl{
 		KubeClient: kubeClientSet,
 		Recorder:   eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: controllerName}),
 	}
 
-	realServiceControl := RealServiceControl{
+	realServiceControl := control.RealServiceControl{
 		KubeClient: kubeClientSet,
 		Recorder:   eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: controllerName}),
 	}
@@ -327,6 +328,7 @@ func (tc *TFJobController) enqueueTFJob(tfjob interface{}) {
 		return
 	}
 
+	// TODO: we may need add backoff here
 	tc.workQueue.Add(key)
 }
 
@@ -342,6 +344,9 @@ func (tc *TFJobController) syncTFJob(key string) (bool, error) {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return false, err
+	}
+	if len(namespace) == 0 || len(name) == 0 {
+		return false, fmt.Errorf("invalid tfjob key %q: either namespace or name is missing", key)
 	}
 
 	sharedTFJob, err := tc.getTFJobFromName(namespace, name)
@@ -391,9 +396,24 @@ func (tc *TFJobController) reconcileTFJobs(tfjob *tfv1alpha2.TFJob) error {
 		return err
 	}
 
+	// If the TFJob is terminated, delete all pods and services.
+	if isSucceeded(tfjob.Status) || isFailed(tfjob.Status) {
+		if err := tc.deletePodsAndServices(tfjob, pods); err != nil {
+			return err
+		}
+		// Initialize the status.
+		initializeTFReplicaStatuses(tfjob, tfv1alpha2.TFReplicaTypeWorker)
+		initializeTFReplicaStatuses(tfjob, tfv1alpha2.TFReplicaTypePS)
+		initializeTFReplicaStatuses(tfjob, tfv1alpha2.TFReplicaTypeChief)
+		return tc.updateStatusHandler(tfjob)
+	}
+
+	// Save the current state of the replicas
+	replicasStatus := make(map[string]v1.PodPhase)
+
 	// Diff current active pods/services with replicas.
 	for rtype, spec := range tfjob.Spec.TFReplicaSpecs {
-		err = tc.reconcilePods(tfjob, pods, rtype, spec)
+		err = tc.reconcilePods(tfjob, pods, rtype, spec, replicasStatus)
 		if err != nil {
 			log.Infof("reconcilePods error %v", err)
 			return err

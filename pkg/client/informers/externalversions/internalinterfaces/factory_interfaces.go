@@ -21,7 +21,7 @@ package internalinterfaces
 import (
 	time "time"
 
-	versioned "github.com/jzp1025/mx-operator/pkg/client/clientset/versioned"
+	versioned "github.com/kubeflow/mx-operator/pkg/client/clientset/versioned"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	cache "k8s.io/client-go/tools/cache"
 )

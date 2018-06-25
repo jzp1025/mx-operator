@@ -27,14 +27,14 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	mxv1alpha1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
+	mxv1alpha1 "github.com/kubeflow/mx-operator/pkg/apis/mxnet/v1alpha1"
 )
 
 // RecommendedConfigPathEnvVar is a environment variable for path configuration
 const RecommendedConfigPathEnvVar = "KUBECONFIG"
 
 // TODO(jlewi): I think this function is used to add an owner to a resource. I think we we should use this
-// addOwnerRefToObject method to ensure all resources created for the TFJob are owned by the TFJob.
+// addOwnerRefToObject method to ensure all resources created for the MXJob are owned by the MXJob.
 func addOwnerRefToObject(o metav1.Object, r metav1.OwnerReference) {
 	o.SetOwnerReferences(append(o.GetOwnerReferences(), r))
 }
@@ -92,10 +92,10 @@ func JobListOpt(clusterName string) metav1.ListOptions {
 	}
 }
 
-// LabelsForJob returns map which stores the tf_job name and app label.
+// LabelsForJob returns map which stores the mx_job name and app label.
 func LabelsForJob(jobName string) map[string]string {
 	return map[string]string{
-		// TODO(jlewi): Need to set appropriate labels for TF.
+		// TODO(jlewi): Need to set appropriate labels for MX.
 		"mx_job": jobName,
 		"app":    mxv1alpha1.AppLabel,
 	}

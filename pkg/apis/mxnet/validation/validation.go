@@ -18,11 +18,11 @@ import (
 	"errors"
 	"fmt"
 
-	mxv1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
-	"github.com/jzp1025/mx-operator/pkg/util"
+	mxv1 "github.com/kubeflow/mx-operator/pkg/apis/mxnet/v1alpha1"
+	"github.com/kubeflow/mx-operator/pkg/util"
 )
 
-// ValidateTFJobSpec checks that the TFJobSpec is valid.
+// ValidateMXJobSpec checks that the MXJobSpec is valid.
 func ValidateMXJobSpec(c *mxv1.MXJobSpec) error {
 	if c.TerminationPolicy == nil || c.TerminationPolicy.Chief == nil {
 		return fmt.Errorf("invalid termination policy: %v", c.TerminationPolicy)
@@ -30,7 +30,7 @@ func ValidateMXJobSpec(c *mxv1.MXJobSpec) error {
 
 	chiefExists := false
 
-	// Check that each replica has a TensorFlow container and a chief.
+	// Check that each replica has a MXNet container and a chief.
 	for _, r := range c.ReplicaSpecs {
 		found := false
 		if r.Template == nil {
@@ -46,7 +46,7 @@ func ValidateMXJobSpec(c *mxv1.MXJobSpec) error {
 		}
 
 		// Make sure the replica type is valid.
-		validReplicaTypes := []mxv1.MXReplicaType{mxv1.MASTER, mxv1.SERVER, mxv1.WORKER}
+		validReplicaTypes := []mxv1.MXReplicaType{mxv1.SCHEDULER, mxv1.SERVER, mxv1.WORKER}
 
 		isValidReplicaType := false
 		for _, t := range validReplicaTypes {

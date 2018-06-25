@@ -17,8 +17,8 @@
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
-	"github.com/jzp1025/mx-operator/pkg/client/clientset/versioned/scheme"
+	v1alpha1 "github.com/kubeflow/mx-operator/pkg/apis/mxnet/v1alpha1"
+	"github.com/kubeflow/mx-operator/pkg/client/clientset/versioned/scheme"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	rest "k8s.io/client-go/rest"
 )

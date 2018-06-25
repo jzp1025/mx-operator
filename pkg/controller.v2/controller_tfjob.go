@@ -10,6 +10,11 @@ import (
 	tfv1alpha2 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha2"
 )
 
+const (
+	failedMarshalTFJobReason = "FailedMarshalTFJob"
+	terminatedTFJobReason    = "TFJobTerminated"
+)
+
 // When a pod is added, set the defaults and enqueue the current tfjob.
 func (tc *TFJobController) addTFJob(obj interface{}) {
 	// Convert from unstructured object.
@@ -32,12 +37,18 @@ func (tc *TFJobController) addTFJob(obj interface{}) {
 	log.Info(msg)
 
 	// Add a created condition.
-	err = tc.updateTFJobConditions(tfJob, tfv1alpha2.TFJobCreated, tfJobCreatedReason, msg)
+	err = updateTFJobConditions(tfJob, tfv1alpha2.TFJobCreated, tfJobCreatedReason, msg)
 	if err != nil {
 		log.Infof("Append tfJob condition error: %v", err)
 		return
 	}
 
+	// Convert from tfjob object
+	err = unstructuredFromTFJob(obj, tfJob)
+	if err != nil {
+		log.Error("Failed to convert the obj: %v", err)
+		return
+	}
 	tc.enqueueTFJob(obj)
 }
 
@@ -49,4 +60,31 @@ func (tc *TFJobController) updateTFJob(old, cur interface{}) {
 	}
 	log.Infof("Updating tfjob: %s", oldTFJob.Name)
 	tc.enqueueTFJob(cur)
+}
+
+func (tc *TFJobController) deletePodsAndServices(tfJob *tfv1alpha2.TFJob, pods []*v1.Pod) error {
+	if len(pods) == 0 {
+		return nil
+	}
+	tc.recorder.Event(tfJob, v1.EventTypeNormal, terminatedTFJobReason,
+		"TFJob is terminated, deleting pods and services")
+
+	// Delete nothing when the cleanPodPolicy is None.
+	if *tfJob.Spec.CleanPodPolicy == tfv1alpha2.CleanPodPolicyNone {
+		return nil
+	}
+
+	for _, pod := range pods {
+		if *tfJob.Spec.CleanPodPolicy == tfv1alpha2.CleanPodPolicyRunning && pod.Status.Phase != v1.PodRunning {
+			continue
+		}
+		if err := tc.podControl.DeletePod(pod.Namespace, pod.Name, tfJob); err != nil {
+			return err
+		}
+		// Pod and service have the same name, thus the service could be deleted using pod's name.
+		if err := tc.serviceControl.DeleteService(pod.Namespace, pod.Name, tfJob); err != nil {
+			return err
+		}
+	}
+	return nil
 }

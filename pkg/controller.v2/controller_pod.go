@@ -27,13 +27,21 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/controller"
 
 	tfv1alpha2 "github.com/kubeflow/tf-operator/pkg/apis/tensorflow/v1alpha2"
+	"github.com/kubeflow/tf-operator/pkg/generator"
+	train_util "github.com/kubeflow/tf-operator/pkg/util/train"
 )
 
 const (
+	// tfConfig is the environment variable name of TensorFlow cluster spec.
 	tfConfig = "TF_CONFIG"
+
+	// podTemplateRestartPolicyReason is the warning reason when the restart
+	// policy is setted in pod template.
+	podTemplateRestartPolicyReason = "SettedPodTemplateRestartPolicy"
 )
 
 // reconcilePods checks and updates pods for each given TFReplicaSpec.
@@ -42,35 +50,54 @@ func (tc *TFJobController) reconcilePods(
 	tfjob *tfv1alpha2.TFJob,
 	pods []*v1.Pod,
 	rtype tfv1alpha2.TFReplicaType,
-	spec *tfv1alpha2.TFReplicaSpec) error {
+	spec *tfv1alpha2.TFReplicaSpec, rstatus map[string]v1.PodPhase) error {
 
 	// Convert TFReplicaType to lower string.
 	rt := strings.ToLower(string(rtype))
 	// Get all pods for the type rt.
 	pods = filterPodsForTFReplicaType(pods, rt)
 	replicas := int(*spec.Replicas)
+	restart := false
 
 	initializeTFReplicaStatuses(tfjob, rtype)
 
 	podSlices := getPodSlices(pods, replicas, loggerForReplica(tfjob, rt))
 	for index, podSlice := range podSlices {
 		if len(podSlice) > 1 {
-			loggerForReplica(tfjob, rt).Warningf("We have to many pods for %s %d", rt, index)
+			loggerForReplica(tfjob, rt).Warningf("We have too many pods for %s %d", rt, index)
 			// TODO(gaocegege): Kill some pods.
 		} else if len(podSlice) == 0 {
-			loggerForReplica(tfjob, rt).Infof("need to create new pod: %s-%d", rt, index)
+			loggerForReplica(tfjob, rt).Infof("Need to create new pod: %s-%d", rt, index)
 			err := tc.createNewPod(tfjob, rt, strconv.Itoa(index), spec)
 			if err != nil {
 				return err
 			}
 		} else {
-			// We already have one, and check the status.
+			// Check the status of the current pod.
 			pod := podSlice[0]
+			// Check if the pod is retryable.
+			if spec.RestartPolicy == tfv1alpha2.RestartPolicyExitCode {
+				var exitCode int32
+				for _, status := range pod.Status.ContainerStatuses {
+					state := status.State
+					// Get the exit code of the tensorflow container.
+					if status.Name == tfv1alpha2.DefaultContainerName && state.Terminated != nil {
+						exitCode = state.Terminated.ExitCode
+					}
+				}
+				if pod.Status.Phase == v1.PodFailed && train_util.IsRetryableExitCode(exitCode) {
+					loggerForReplica(tfjob, rt).Infof("Need to restart the pod: %s-%d", rt, index)
+					if err := tc.podControl.DeletePod(pod.Namespace, pod.Name, tfjob); err != nil {
+						return err
+					}
+					restart = true
+				}
+			}
 			updateTFJobReplicaStatuses(tfjob, rtype, pod)
 		}
 	}
 
-	return tc.updateStatus(tfjob, rtype, replicas)
+	return updateStatusSingle(tfjob, rtype, replicas, restart)
 }
 
 // getPodSlices returns a slice, which element is the slice of pod.
@@ -109,14 +136,17 @@ func (tc *TFJobController) createNewPod(tfjob *tfv1alpha2.TFJob, rt, index strin
 	}
 
 	// Create OwnerReference.
-	controllerRef := genOwnerReference(tfjob)
+	controllerRef := generator.GenOwnerReference(tfjob)
 
 	// Set type and index for the worker.
-	labels := genLabels(tfjobKey)
+	labels := generator.GenLabels(tfjob.Name)
 	labels[tfReplicaTypeLabel] = rt
 	labels[tfReplicaIndexLabel] = index
 
 	podTemplate := spec.Template.DeepCopy()
+
+	// Set name for the template.
+	podTemplate.Name = generator.GenGeneralName(tfjob.Name, rt, index)
 
 	if podTemplate.Labels == nil {
 		podTemplate.Labels = make(map[string]string)
@@ -126,31 +156,18 @@ func (tc *TFJobController) createNewPod(tfjob *tfv1alpha2.TFJob, rt, index strin
 		podTemplate.Labels[key] = value
 	}
 
-	// Generate TF_CONFIG JSON string.
-	tfConfigStr, err := genTFConfigJSONStr(tfjob, rt, index)
-	if err != nil {
+	if err := setClusterSpec(podTemplate, tfjob, rt, index); err != nil {
 		return err
 	}
 
-	if tfConfigStr == "" {
-		return nil
+	// Submit a warning event if the user specifies restart policy for
+	// the pod template. We recommend to set it from the replica level.
+	if podTemplate.Spec.RestartPolicy != v1.RestartPolicy("") {
+		errMsg := "Restart policy in pod template will be overwritten by restart policy in replica spec"
+		loggerForReplica(tfjob, rt).Warning(errMsg)
+		tc.recorder.Event(tfjob, v1.EventTypeWarning, podTemplateRestartPolicyReason, errMsg)
 	}
-	// Add TF_CONFIG environment variable.
-	for i := range podTemplate.Spec.Containers {
-		if len(podTemplate.Spec.Containers[i].Env) == 0 {
-			podTemplate.Spec.Containers[i].Env = make([]v1.EnvVar, 0)
-		}
-		podTemplate.Spec.Containers[i].Env = append(podTemplate.Spec.Containers[i].Env, v1.EnvVar{
-			Name:  tfConfig,
-			Value: tfConfigStr,
-		})
-	}
-
-	// TODO(gaocegege): Deal with RestartPolicyExitCode.
-	// Set restart policy
-	if spec.RestartPolicy != tfv1alpha2.RestartPolicyExitCode {
-		podTemplate.Spec.RestartPolicy = v1.RestartPolicy(spec.RestartPolicy)
-	}
+	setRestartPolicy(podTemplate, spec)
 
 	err = tc.podControl.CreatePodsWithControllerRef(tfjob.Namespace, podTemplate, tfjob, controllerRef)
 	if err != nil && errors.IsTimeout(err) {
@@ -168,19 +185,44 @@ func (tc *TFJobController) createNewPod(tfjob *tfv1alpha2.TFJob, rt, index strin
 	return nil
 }
 
+func setClusterSpec(podTemplateSpec *v1.PodTemplateSpec, tfjob *tfv1alpha2.TFJob, rt, index string) error {
+	// Generate TF_CONFIG JSON string.
+	tfConfigStr, err := genTFConfigJSONStr(tfjob, rt, index)
+	if err != nil {
+		return err
+	}
+
+	if tfConfigStr == "" {
+		return nil
+	}
+	// Add TF_CONFIG environment variable.
+	for i := range podTemplateSpec.Spec.Containers {
+		if len(podTemplateSpec.Spec.Containers[i].Env) == 0 {
+			podTemplateSpec.Spec.Containers[i].Env = make([]v1.EnvVar, 0)
+		}
+		podTemplateSpec.Spec.Containers[i].Env = append(podTemplateSpec.Spec.Containers[i].Env, v1.EnvVar{
+			Name:  tfConfig,
+			Value: tfConfigStr,
+		})
+	}
+	return nil
+}
+
+func setRestartPolicy(podTemplateSpec *v1.PodTemplateSpec, spec *tfv1alpha2.TFReplicaSpec) {
+	if spec.RestartPolicy == tfv1alpha2.RestartPolicyExitCode {
+		podTemplateSpec.Spec.RestartPolicy = v1.RestartPolicyNever
+	} else {
+		podTemplateSpec.Spec.RestartPolicy = v1.RestartPolicy(spec.RestartPolicy)
+	}
+}
+
 // getPodsForTFJob returns the set of pods that this tfjob should manage.
 // It also reconciles ControllerRef by adopting/orphaning.
 // Note that the returned Pods are pointers into the cache.
 func (tc *TFJobController) getPodsForTFJob(tfjob *tfv1alpha2.TFJob) ([]*v1.Pod, error) {
-	tfjobKey, err := KeyFunc(tfjob)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Couldn't get key for tfjob object %#v: %v", tfjob, err))
-		return nil, err
-	}
-
 	// Create selector.
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: genLabels(tfjobKey),
+		MatchLabels: generator.GenLabels(tfjob.Name),
 	})
 
 	if err != nil {
@@ -231,6 +273,23 @@ func filterPodsForTFReplicaType(pods []*v1.Pod, tfReplicaType string) []*v1.Pod 
 
 func genExpectationPodsKey(tfjobKey, replicaType string) string {
 	return tfjobKey + "/" + strings.ToLower(replicaType) + "/pods"
+}
+
+// RecheckDeletionTimestamp returns a CanAdopt() function to recheck deletion.
+//
+// The CanAdopt() function calls getObject() to fetch the latest value,
+// and denies adoption attempts if that object has a non-nil DeletionTimestamp.
+func RecheckDeletionTimestamp(getObject func() (metav1.Object, error)) func() error {
+	return func() error {
+		obj, err := getObject()
+		if err != nil {
+			return fmt.Errorf("can't recheck DeletionTimestamp: %v", err)
+		}
+		if obj.GetDeletionTimestamp() != nil {
+			return fmt.Errorf("%v/%v has just been deleted at %v", obj.GetNamespace(), obj.GetName(), obj.GetDeletionTimestamp())
+		}
+		return nil
+	}
 }
 
 // When a pod is created, enqueue the tfjob that manages it and update its expectations.
@@ -318,5 +377,47 @@ func (tc *TFJobController) updatePod(old, cur interface{}) {
 // When a pod is deleted, enqueue the tfjob that manages the pod and update its expectations.
 // obj could be an *v1.Pod, or a DeletionFinalStateUnknown marker item.
 func (tc *TFJobController) deletePod(obj interface{}) {
-	// TODO(CPH): handle this gracefully.
+	pod, ok := obj.(*v1.Pod)
+
+	// When a delete is dropped, the relist will notice a pod in the store not
+	// in the list, leading to the insertion of a tombstone object which contains
+	// the deleted key/value. Note that this value might be stale. If the pod
+	// changed labels the new job will not be woken up till the periodic resync.
+	if !ok {
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %+v", obj))
+			return
+		}
+		pod, ok = tombstone.Obj.(*v1.Pod)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a pod %+v", obj))
+			return
+		}
+	}
+
+	controllerRef := metav1.GetControllerOf(pod)
+	if controllerRef == nil {
+		// No controller should care about orphans being deleted.
+		return
+	}
+	tfJob := tc.resolveControllerRef(pod.Namespace, controllerRef)
+	if tfJob == nil {
+		return
+	}
+	tfJobKey, err := controller.KeyFunc(tfJob)
+	if err != nil {
+		return
+	}
+
+	if _, ok := pod.Labels[tfReplicaTypeLabel]; !ok {
+		loggerForTFJob(tfJob).Info("This pod maybe not created by tf-operator")
+		return
+	}
+
+	rtype := pod.Labels[tfReplicaTypeLabel]
+	expectationPodsKey := genExpectationPodsKey(tfJobKey, rtype)
+
+	tc.expectations.DeletionObserved(expectationPodsKey)
+	tc.enqueueTFJob(tfJob)
 }

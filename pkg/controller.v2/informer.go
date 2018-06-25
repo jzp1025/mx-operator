@@ -89,8 +89,28 @@ func tfJobFromUnstructured(obj interface{}) (*tfv1alpha2.TFJob, error) {
 	}
 	var tfjob tfv1alpha2.TFJob
 	err := runtime.DefaultUnstructuredConverter.FromUnstructured(un.Object, &tfjob)
-	if err != nil {
+	// This is a simple validation for TFJob to close
+	// https://github.com/kubeflow/tf-operator/issues/641
+	// TODO(gaocegege): Add more validation here.
+	if err != nil || tfjob.Spec.TFReplicaSpecs == nil {
 		return &tfjob, errFailedMarshal
 	}
 	return &tfjob, nil
+}
+
+func unstructuredFromTFJob(obj interface{}, tfJob *tfv1alpha2.TFJob) error {
+	un, ok := obj.(*metav1unstructured.Unstructured)
+	if !ok {
+		log.Warn("The objetc in index is not an unstructured")
+		return errGetFromKey
+	}
+
+	var err error
+	un.Object, err = runtime.DefaultUnstructuredConverter.ToUnstructured(tfJob)
+	if err != nil {
+		log.Error("The TFJob connvert failed")
+		return err
+	}
+	return nil
+
 }

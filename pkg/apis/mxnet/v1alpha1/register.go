@@ -29,8 +29,8 @@ var (
 const (
 	// GroupName is the group name use in this package.
 	GroupName = "kubeflow.org"
-	// TFJobResourceKind is the kind name.
-	TFJobResourceKind = "MXJob"
+	// MXJobResourceKind is the kind name.
+	MXJobResourceKind = "MXJob"
 	// GroupVersion is the version.
 	GroupVersion = "v1alpha1"
 )

@@ -28,11 +28,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 
-	mxv1alpha1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
-	"github.com/jzp1025/mx-operator/pkg/util/k8sutil"
+	mxv1alpha1 "github.com/kubeflow/mx-operator/pkg/apis/mxnet/v1alpha1"
+	"github.com/kubeflow/mx-operator/pkg/util/k8sutil"
 	// TOOO(jlewi): Rename to apiErrors
-	"github.com/jzp1025/mx-operator/pkg/apis/mxnet/helper"
-	"github.com/jzp1025/mx-operator/pkg/util"
+	"github.com/kubeflow/mx-operator/pkg/apis/mxnet/helper"
+	"github.com/kubeflow/mx-operator/pkg/util"
 )
 
 const (
@@ -41,7 +41,7 @@ const (
 	indexField             = "replica"
 )
 
-// TFReplicaSet is a set of TF processes all acting as the same role (e.g. worker
+// MXReplicaSet is a set of MX processes all acting as the same role (e.g. worker
 type MXReplicaSet struct {
 	ClientSet kubernetes.Interface
 	recorder  record.EventRecorder
@@ -53,18 +53,18 @@ type MXReplicaSet struct {
 	contextLogger *log.Entry
 }
 
-// TFReplicaSetInterface is an interface for managing a set of replicas.
+// MXReplicaSetInterface is an interface for managing a set of replicas.
 type MXReplicaSetInterface interface {
 	Create() error
 	Delete() error
 	GetStatus() (mxv1alpha1.MXReplicaStatus, error)
 }
 
-// TFConfig is a struct representing the TensorFlow config. This struct is turned into an environment
-// which is used by TensorFlow processes to configure themselves.
+// MXConfig is a struct representing the MXNet config. This struct is turned into an environment
+// which is used by MXNet processes to configure themselves.
 type MXConfig struct {
-	// Cluster represents a TensorFlow ClusterSpec.
-	// See: https://www.tensorflow.org/api_docs/python/tf/train/ClusterSpechttps://www.tensorflow.org/api_docs/python/tf/train/ClusterSpec
+	// Cluster represents a MXNet ClusterSpec.
+	// See: https://www.tensorflow.org/api_docs/python/tf/train/ClusterSpec
 	Cluster ClusterSpec `json:"cluster"`
 	Task    TaskSpec    `json:"task"`
 	// Environment is used by tensorflow.contrib.learn.python.learn in versions <= 1.3
@@ -72,10 +72,10 @@ type MXConfig struct {
 	Environment string `json:"environment"`
 }
 
-// NewTFReplicaSet returns TFReplicaSet object for existing replica
+// NewMXReplicaSet returns MXReplicaSet object for existing replica
 func NewMXReplicaSet(clientSet kubernetes.Interface, recorder record.EventRecorder, mxReplicaSpec mxv1alpha1.MXReplicaSpec, job *TrainingJob) (*MXReplicaSet, error) {
-	if mxReplicaSpec.MXReplicaType == mxv1alpha1.MASTER && *mxReplicaSpec.Replicas != 1 {
-		return nil, errors.New("The MASTER must have Replicas = 1")
+	if mxReplicaSpec.MXReplicaType == mxv1alpha1.SCHEDULER && *mxReplicaSpec.Replicas != 1 {
+		return nil, errors.New("The SCHEDULER must have Replicas = 1")
 	}
 
 	if mxReplicaSpec.MXPort == nil {
@@ -87,7 +87,7 @@ func NewMXReplicaSet(clientSet kubernetes.Interface, recorder record.EventRecord
 	}
 
 	// Make sure the replica type is valid.
-	validReplicaTypes := []mxv1alpha1.MXReplicaType{mxv1alpha1.MASTER, mxv1alpha1.SERVER, mxv1alpha1.WORKER}
+	validReplicaTypes := []mxv1alpha1.MXReplicaType{mxv1alpha1.SCHEDULER, mxv1alpha1.SERVER, mxv1alpha1.WORKER}
 
 	isValidReplicaType := false
 	for _, t := range validReplicaTypes {
@@ -186,7 +186,7 @@ func (s *MXReplicaSet) CreatePodWithIndex(index int32) (*v1.Pod, error) {
 
 	pod.Spec.SchedulerName = s.Job.SchedulerName()
 
-	// copy labels and annotations to pod from tfjob
+	// copy labels and annotations to pod from mxjob
 	for k, v := range s.Spec.Template.Labels {
 		if _, ok := pod.Labels[k]; !ok {
 			pod.Labels[k] = v
@@ -199,7 +199,7 @@ func (s *MXReplicaSet) CreatePodWithIndex(index int32) (*v1.Pod, error) {
 		}
 	}
 
-	// Configure the TFCONFIG environment variable.
+	// Configure the MXCONFIG environment variable.
 	mxConfig := MXConfig{
 		Cluster: s.Job.ClusterSpec(),
 		Task: TaskSpec{
@@ -216,7 +216,7 @@ func (s *MXReplicaSet) CreatePodWithIndex(index int32) (*v1.Pod, error) {
 		return nil, err
 	}
 
-	// Add TF_CONFIG environment variable.
+	// Add MX_CONFIG environment variable.
 	for i := range pod.Spec.Containers {
 		// We can't get c in the loop variable because that would be by value so our modifications
 		// wouldn't have any effect.
@@ -237,6 +237,60 @@ func (s *MXReplicaSet) CreatePodWithIndex(index int32) (*v1.Pod, error) {
 		indexField: index,
 	}).Infof("Creating pod: %v", pod.ObjectMeta.Name)
 	return s.ClientSet.CoreV1().Pods(s.Job.job.ObjectMeta.Namespace).Create(pod)
+}
+
+// Delete the replicas by cleanup pod policy when the mxjob is complete or failed: CleanupPodAll, CleanupPodNone, CleanupPodRunning, the default is CleanupPodAll
+func (s *MXReplicaSet) DeleteResourcesByCleanPolicy(cleanupPodPolicy mxv1alpha1.CleanupPodPolicy) (err error) {
+	log.Infof("DeleteResourcesByCleanPolicy for %s with CleanupPodPolicy %v", s.Job.job.ObjectMeta.Name, cleanupPodPolicy)
+	switch cleanupPodPolicy {
+	case mxv1alpha1.CleanupPodUndefined, mxv1alpha1.CleanupPodAll:
+		s.contextLogger.Infof("Apply Clean All Policy for %s", s.Job.job.ObjectMeta.Name)
+		err = s.Delete()
+	case mxv1alpha1.CleanupPodNone:
+		s.contextLogger.Infof("Apply Clean None Policy for %s", s.Job.job.ObjectMeta.Name)
+	case mxv1alpha1.CleanupPodRunning:
+		s.contextLogger.Infof("Apply Clean Running Pod Policy for %s", s.Job.job.ObjectMeta.Name)
+		err = s.DeleteRunningPods()
+	default:
+		s.contextLogger.Errorf("Unknown cleanupPodPolicy %v", cleanupPodPolicy)
+		err = fmt.Errorf("Unknown cleanupPodPolicy %v", cleanupPodPolicy)
+	}
+
+	return err
+}
+
+// Deletes the running pods
+func (s *MXReplicaSet) DeleteRunningPods() error {
+	selector, err := s.Labels().ToSelector()
+	if err != nil {
+		return err
+	}
+
+	failures := false
+	fieldSelector := fmt.Sprintf("status.phase!=" + string(v1.PodSucceeded) + ",status.phase!=" + string(v1.PodFailed))
+
+	options := meta_v1.ListOptions{
+		LabelSelector: selector,
+		FieldSelector: fieldSelector,
+	}
+
+	s.contextLogger.Infof("Deleting Pods namespace=%v selector=%v fieldSelector=%v",
+		s.Job.job.ObjectMeta.Namespace,
+		selector,
+		fieldSelector)
+	err = s.ClientSet.CoreV1().Pods(s.Job.job.ObjectMeta.Namespace).DeleteCollection(&meta_v1.DeleteOptions{}, options)
+
+	if err != nil {
+		s.contextLogger.Errorf("There was a problem deleting the pods; %v", err)
+		failures = true
+	}
+
+	if failures {
+		return errors.New("Some of the replicas resources could not be deleted")
+	}
+
+	return nil
+
 }
 
 // Delete deletes the replicas
@@ -284,16 +338,16 @@ func (s *MXReplicaSet) Delete() error {
 	}
 
 	// If the ConfigMap for the default parameter server exists, we delete it
-	s.contextLogger.Infof("Get ConfigMaps %v:%v", s.Job.job.ObjectMeta.Namespace, s.defaultSERVERConfigMapName())
-	_, err = s.ClientSet.CoreV1().ConfigMaps(s.Job.job.ObjectMeta.Namespace).Get(s.defaultSERVERConfigMapName(), meta_v1.GetOptions{})
+	s.contextLogger.Infof("Get ConfigMaps %v:%v", s.Job.job.ObjectMeta.Namespace, s.defaultPSConfigMapName())
+	_, err = s.ClientSet.CoreV1().ConfigMaps(s.Job.job.ObjectMeta.Namespace).Get(s.defaultPSConfigMapName(), meta_v1.GetOptions{})
 	if err != nil {
 		if !k8sutil.IsKubernetesResourceNotFoundError(err) {
-			s.contextLogger.Errorf("Error deleting ConfigMap %v; %v", s.defaultSERVERConfigMapName(), err)
+			s.contextLogger.Errorf("Error deleting ConfigMap %v; %v", s.defaultPSConfigMapName(), err)
 			failures = true
 		}
 	} else {
-		s.contextLogger.Infof("Delete ConfigMaps %v:%v", s.Job.job.ObjectMeta.Namespace, s.defaultSERVERConfigMapName())
-		err = s.ClientSet.CoreV1().ConfigMaps(s.Job.job.ObjectMeta.Namespace).Delete(s.defaultSERVERConfigMapName(), &meta_v1.DeleteOptions{})
+		s.contextLogger.Infof("Delete ConfigMaps %v:%v", s.Job.job.ObjectMeta.Namespace, s.defaultPSConfigMapName())
+		err = s.ClientSet.CoreV1().ConfigMaps(s.Job.job.ObjectMeta.Namespace).Delete(s.defaultPSConfigMapName(), &meta_v1.DeleteOptions{})
 		if err != nil {
 			s.contextLogger.Errorf("There was a problem deleting the ConfigMaps; %v", err)
 			failures = true
@@ -430,11 +484,11 @@ func (s *MXReplicaSet) GetStatus() (mxv1alpha1.MXReplicaStatus, error) {
 	return status, nil
 }
 
-// SyncPods will try to check current pods for this TFReplicaSet and try to make it as desired.
+// SyncPods will try to check current pods for this MXReplicaSet and try to make it as desired.
 func (s *MXReplicaSet) SyncPods() error {
 	for index := int32(0); index < *s.Spec.Replicas; index++ {
 
-		// Label to get all pods of this TFReplicaType + index
+		// Label to get all pods of this MXReplicaType + index
 		labels := s.LabelsByIndex(index)
 
 		labelSelector, err := labels.ToSelector()
@@ -484,7 +538,7 @@ func (s *MXReplicaSet) SyncPods() error {
 	return nil
 }
 
-// SyncServices will try to check current services for this TFReplicaSet and try to make it as desired.
+// SyncServices will try to check current services for this MXReplicaSet and try to make it as desired.
 func (s *MXReplicaSet) SyncServices() error {
 	for index := int32(0); index < *s.Spec.Replicas; index++ {
 		_, err := s.ClientSet.CoreV1().Services(s.Job.job.ObjectMeta.Namespace).Get(s.genName(index), meta_v1.GetOptions{})
@@ -516,13 +570,13 @@ func (s *MXReplicaSet) SyncServices() error {
 	return nil
 }
 
-// genName generates the name which is concatenation of jabName, TFReplicaType, job RunId and index
+// genName generates the name which is concatenation of jabName, MXReplicaType, job RunId and index
 func (s *MXReplicaSet) genName(index int32) string {
-	// Truncate tfjob name to 40 characters
+	// Truncate mxjob name to 40 characters
 	// The whole job name should be compliant with the DNS_LABEL spec, up to a max length of 63 characters
 	// Thus genName(40 chars)-replicaType(6 chars)-runtimeId(4 chars)-index(4 chars), also leaving some spaces
 	// See https://github.com/kubernetes/community/blob/master/contributors/design-proposals/architecture/identifiers.md
-	return fmt.Sprintf("%v-%v-%v-%v", fmt.Sprintf("%.40s", s.Job.job.ObjectMeta.Name), strings.ToLower(string(s.Spec.TFReplicaType)), s.Job.job.Spec.RuntimeId, index)
+	return fmt.Sprintf("%v-%v-%v-%v", fmt.Sprintf("%.40s", s.Job.job.ObjectMeta.Name), strings.ToLower(string(s.Spec.MXReplicaType)), s.Job.job.Spec.RuntimeId, index)
 }
 
 // genPodName generate a new pod name with random string
@@ -531,6 +585,6 @@ func (s *MXReplicaSet) genPodName(index int32) string {
 }
 
 //  defaultPSConfigMapName returns the map default PS configuration map name using job's runtimeId
-func (s *MXReplicaSet) defaultSERVERConfigMapName() string {
+func (s *MXReplicaSet) defaultPSConfigMapName() string {
 	return fmt.Sprintf("cm-ps-%v", s.Job.job.Spec.RuntimeId)
 }

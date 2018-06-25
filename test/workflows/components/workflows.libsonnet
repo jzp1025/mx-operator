@@ -2,6 +2,11 @@
   // TODO(https://github.com/ksonnet/ksonnet/issues/222): Taking namespace as an argument is a work around for the fact that ksonnet
   // doesn't support automatically piping in the namespace from the environment to prototypes.
 
+  // TODO(jlewi): We should refactor the test_runner step so that we don't have to get K8s credentials
+  // on each individual step. Instead we should do what we do in our kubeflow/kubeflow tests
+  // and have a separate step that modifies .kubeconfig and then on subsequent steps
+  // just set the environment variable KUBE_CONFIG.
+
   // convert a list of two items into a map representing an environment variable
   // TODO(jlewi): Should we move this into kubeflow/core/util.libsonnet
   listToMap:: function(v)
@@ -53,19 +58,34 @@
       local srcRootDir = testDir + "/src";
       // The directory containing the kubeflow/tf-operator repo
       local srcDir = srcRootDir + "/kubeflow/tf-operator";
-      local image = "gcr.io/kubeflow-ci/test-worker";
+      // The image should generally be overwritten in the prow_config.yaml file. This makes it easier
+      // to ensure a consistent image is used for all workflows.
+      local image = if std.objectHas(params, "testWorkerImage") && std.length(params.testWorkerImage) > 0 then
+        params.testWorkerImage
+        else
+        "gcr.io/kubeflow-ci/test-worker";
+
       // The name of the NFS volume claim to use for test files.
       // local nfsVolumeClaim = "kubeflow-testing";
       local nfsVolumeClaim = "nfs-external";
       // The name to use for the volume to use to contain test data.
       local dataVolume = "kubeflow-test-volume";
-      local versionTag = if params.versionTag != null then
+      local versionTag = if std.objectHas(params, "versionTag") && params.versionTag != "null" && std.length(params.versionTag) > 0 then
         params.versionTag
       else name;
       local tfJobImage = params.registry + "/tf_operator:" + versionTag;
 
+      local apiVersion = if params.tfJobVersion == "v1alpha1" then
+        "kubeflow.org/v1alpha1"
+      else
+        "kubeflow.org/v1alpha2";
+
+      // The test server image to use.
+      local testServerImage = "gcr.io/kubeflow-images-staging/tf-operator-test-server:v20180613-e06fc0bb-dirty-5ef291";
+
       // The namespace on the cluster we spin up to deploy into.
       local deployNamespace = "kubeflow";
+
       // The directory within the kubeflow_testing submodule containing
       // py scripts to use.
       local k8sPy = srcDir;
@@ -172,47 +192,68 @@
           templates: [
             {
               name: "e2e",
-              steps: [
-                [{
-                  name: "checkout",
-                  template: "checkout",
-                }],
-                [
+              dag: {
+                tasks: [
+                  {
+                    name: "checkout",
+                    template: "checkout",
+                  },
+
                   {
                     name: "build",
                     template: "build",
+                    dependencies: ["checkout"],
                   },
                   {
                     name: "create-pr-symlink",
                     template: "create-pr-symlink",
+                    dependencies: ["checkout"],
                   },
                   {
                     name: "py-test",
                     template: "py-test",
+                    dependencies: ["checkout"],
                   },
                   {
                     name: "py-lint",
                     template: "py-lint",
+                    dependencies: ["checkout"],
                   },
-                ],
-                [  // Setup cluster needs to run after build because we depend on the chart
-                  // created by the build statement.
+
                   {
                     name: "setup-cluster",
                     template: "setup-cluster",
+                    dependencies: ["checkout"],
                   },
-                ],
-                [
+
+
+                  {
+                    name: "setup-kubeflow",
+                    template: "setup-kubeflow",
+                    dependencies: ["setup-cluster", "build"],
+                  },
                   {
                     name: "run-tests",
                     template: "run-tests",
+                    dependencies: ["setup-kubeflow"],
+                  },
+                  {
+                    name: "run-worker0",
+                    template: "run-worker0",
+                    dependencies: ["setup-kubeflow"],
+                  },
+                  {
+                    name: "run-chief",
+                    template: "run-chief",
+                    dependencies: ["setup-kubeflow"],
                   },
                   {
                     name: "run-gpu-tests",
                     template: "run-gpu-tests",
+                    dependencies: ["setup-kubeflow"],
                   },
-                ],
-              ],
+                ],  //tasks
+              },
             },
             {
               name: "exit-handler",
@@ -275,16 +316,62 @@
               "python",
               "-m",
               "py.deploy",
-              "setup",
+              "setup_cluster",
               "--cluster=" + cluster,
               "--zone=" + zone,
               "--project=" + project,
               "--namespace=" + deployNamespace,
-              "--image=" + tfJobImage,
               "--accelerator=nvidia-tesla-k80=1",
-              "--test_app_dir=" + srcDir + "/test/test-app",
               "--junit_path=" + artifactsDir + "/junit_setupcluster.xml",
             ]),  // setup cluster
+            $.parts(namespace, name).e2e(prow_env, bucket).buildTemplate("setup-kubeflow", [
+              "python",
+              "-m",
+              "py.deploy",
+              "setup_kubeflow",
+              "--cluster=" + cluster,
+              "--zone=" + zone,
+              "--project=" + project,
+              "--namespace=" + deployNamespace,
+              "--test_app_dir=" + srcDir + "/test/test-app",
+              "--image=" + tfJobImage,
+              "--tf_job_version=" + params.tfJobVersion,
+              "--junit_path=" + artifactsDir + "/junit_setupkubeflow.xml",
+            ]),  // setup cluster
+            $.parts(namespace, name).e2e(prow_env, bucket).buildTemplate("run-chief", [
+              "python",
+              "-m",
+              "py.test_runner",
+              "test",
+              "--cluster=" + cluster,
+              "--zone=" + zone,
+              "--project=" + project,
+              "--app_dir=" + srcDir + "/test/workflows",
+              if params.tfJobVersion == "v1alpha2" then
+                "--component=master_is_chief_v1alpha2"
+              else
+                "--component=master_is_chief_v1alpha1",
+              "--shutdown_policy=master",
+              "--params=name=master-is-chief,namespace=default,image=" + testServerImage,
+              "--junit_path=" + artifactsDir + "/junit_chief.xml",
+            ]),  // run worker0
+            $.parts(namespace, name).e2e(prow_env, bucket).buildTemplate("run-worker0", [
+              "python",
+              "-m",
+              "py.test_runner",
+              "test",
+              "--cluster=" + cluster,
+              "--zone=" + zone,
+              "--project=" + project,
+              "--app_dir=" + srcDir + "/test/workflows",
+              if params.tfJobVersion == "v1alpha2" then
+                "--component=worker0_is_chief_v1alpha2"
+              else
+                "--component=worker0_is_chief_v1alpha1",
+              "--shutdown_policy=worker",
+              "--params=name=worker0-is-chief,namespace=default,image=" + testServerImage,
+              "--junit_path=" + artifactsDir + "/junit_worker0.xml",
+            ]),  // run worker0
             $.parts(namespace, name).e2e(prow_env, bucket).buildTemplate("run-tests", [
               "python",
               "-m",
@@ -295,7 +382,8 @@
               "--project=" + project,
               "--app_dir=" + srcDir + "/test/workflows",
               "--component=simple_tfjob",
-              "--params=name=simple-tfjob,namespace=default",
+              "--params=name=simple-tfjob-" + params.tfJobVersion + ",namespace=default",
+              "--tfjob_version=" + params.tfJobVersion,
               "--junit_path=" + artifactsDir + "/junit_e2e.xml",
             ]),  // run tests
             $.parts(namespace, name).e2e(prow_env, bucket).buildTemplate("run-gpu-tests", [
@@ -308,7 +396,8 @@
               "--project=" + project,
               "--app_dir=" + srcDir + "/test/workflows",
               "--component=gpu_tfjob",
-              "--params=name=gpu-tfjob,namespace=default",
+              "--params=name=gpu-tfjob-" + params.tfJobVersion + ",namespace=default",
+              "--tfjob_version=" + params.tfJobVersion,
               "--junit_path=" + artifactsDir + "/junit_gpu-tests.xml",
             ]),  // run gpu_tests
             $.parts(namespace, name).e2e(prow_env, bucket).buildTemplate("create-pr-symlink", [

@@ -19,12 +19,12 @@
 package v1alpha1
 
 import (
-	internalinterfaces "github.com/jzp1025/mx-operator/pkg/client/informers/externalversions/internalinterfaces"
+	internalinterfaces "github.com/kubeflow/mx-operator/pkg/client/informers/externalversions/internalinterfaces"
 )
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// TFJobs returns a TFJobInformer.
+	// MXJobs returns a MXJobInformer.
 	MXJobs() MXJobInformer
 }
 
@@ -37,7 +37,7 @@ func New(f internalinterfaces.SharedInformerFactory) Interface {
 	return &version{f}
 }
 
-// TFJobs returns a TFJobInformer.
+// MXJobs returns a MXJobInformer.
 func (v *version) MXJobs() MXJobInformer {
 	return &mXJobInformer{factory: v.SharedInformerFactory}
 }

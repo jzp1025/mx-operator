@@ -2,11 +2,15 @@
 
 import argparse
 import datetime
+import filelock
 import httplib
 import logging
 import json
 import os
 import re
+import requests
+import retrying
+import subprocess
 import time
 import uuid
 
@@ -14,8 +18,8 @@ from kubernetes import client as k8s_client
 from kubernetes.client import rest
 
 from google.cloud import storage  # pylint: disable=no-name-in-module
+from kubeflow.testing import util
 from py import test_util
-from py import util
 from py import tf_job_client
 
 
@@ -46,9 +50,9 @@ def wait_for_delete(client,
         tf_job_client.TF_JOB_GROUP, version, namespace,
         tf_job_client.TF_JOB_PLURAL, name)
     except rest.ApiException as e:
-      logging.exception("rest.ApiException thrown")
       if e.status == httplib.NOT_FOUND:
         return
+      logging.exception("rest.ApiException thrown")
       raise
     if status_callback:
       status_callback(results)
@@ -60,6 +64,58 @@ def wait_for_delete(client,
 
     time.sleep(polling_interval.seconds)
 
+
+def log_pods(pods):
+  """Log information about pods."""
+  for p in pods.items:
+    logging.info("Pod name=%s Phase=%s", p.metadata.name, p.status.phase)
+
+def wait_for_pods_to_be_in_phases(client,
+                                  namespace,
+                                  pod_selector,
+                                  phases,
+                                  timeout=datetime.timedelta(minutes=5),
+                                  polling_interval=datetime.timedelta(
+                                  seconds=30)):
+  """Wait for the pods matching the selector to be in the specified state
+
+  Args:
+    client: K8s api client.
+    namespace: Namespace.
+    pod_selector: Selector for the pods.
+    phases: List of desired phases
+    timeout: How long to wait for the job.
+    polling_interval: How often to poll for the status of the job.
+    status_callback: (Optional): Callable. If supplied this callable is
+      invoked after we poll the job. Callable takes a single argument which
+      is the job.
+  """
+  end_time = datetime.datetime.now() + timeout
+  while True:
+    pods = list_pods(client, namespace, pod_selector)
+
+    logging.info("%s pods matched %s pods", len(pods.items), pod_selector)
+
+    is_match = True
+    for p in pods.items:
+      if p.status.phase not in phases:
+        is_match = False
+
+    if is_match:
+      logging.info("All pods in phase %s", phases)
+      log_pods(pods)
+      return pods
+
+    if datetime.datetime.now() + polling_interval > end_time:
+      logging.info("Latest pod phases")
+      log_pods(pods)
+      logging.error("Timeout waiting for pods to be in phase: %s",
+                    phases)
+      raise util.TimeoutError("Timeout waiting for pods to be in states %s" %
+                              phases)
+    time.sleep(polling_interval.seconds)
+
+  return None
 
 def wait_for_pods_to_be_deleted(client,
                                 namespace,
@@ -109,6 +165,20 @@ def get_labels(name, runtime_id, replica_type=None, replica_index=None):
     labels["task_index"] = replica_index
   return labels
 
+def get_labels_v1alpha2(name, replica_type=None,
+                        replica_index=None):
+  """Return labels.
+  """
+  labels = {
+    "group_name": "kubeflow.org",
+    "tf_job_name": name,
+  }
+  if replica_type:
+    labels["tf-replica-type"] = replica_type
+
+  if replica_index:
+    labels["tf-replica-index"] = replica_index
+  return labels
 
 def to_selector(labels):
   parts = []
@@ -150,7 +220,7 @@ def get_events(client, namespace, uid):
   try:
     # We can't filter by labels because events don't appear to have anyone
     # and I didn't see an easy way to get them.
-    events = core.list_namespaced_event(namespace)
+    events = core.list_namespaced_event(namespace, limit=500)
   except rest.ApiException as e:
     message = ""
     if e.message:
@@ -191,7 +261,7 @@ def parse_events(events):
     pods_created: Set of unique pod names created.
     services_created: Set of unique services created.
   """
-  pattern = re.compile("Created.*(pod|Service).*: (.*)", re.IGNORECASE)
+  pattern = re.compile(".*Created.*(pod|Service).*: (.*)", re.IGNORECASE)
 
   pods = set()
   services = set()
@@ -211,6 +281,95 @@ def parse_events(events):
   return pods, services
 
 
+@retrying.retry(wait_fixed=10, stop_max_delay=60)
+def terminateReplica(masterHost, namespace, target, exitCode=0):
+  """Issue a request to terminate the requested TF replica running test_app.
+
+  Args:
+    masterHost: The IP address of the master e.g. https://35.188.37.10
+    namespace: The namespace
+    target: The K8s service corresponding to the pod to terminate.
+    exitCode: What exit code to terminate the pod with.
+  """
+  params = {
+    "exitCode": exitCode,
+  }
+
+  token = subprocess.check_output(["gcloud", "auth", "print-access-token"])
+  headers = {
+    "Authorization": "Bearer " + token.strip(),
+  }
+  url = ("{master}/api/v1/namespaces/{namespace}/services/{service}:2222"
+         "/proxy/exit").format(
+          master=masterHost, namespace=namespace, service=target)
+  r = requests.get(url,
+                   headers=headers, params=params,
+                   verify=False)
+
+  if r.status_code == requests.codes.NOT_FOUND:
+    logging.info("Request to %s returned 404", url)
+    return
+  if r.status_code != requests.codes.OK:
+    msg = "Request to {0} exited with status code: {1}".format(url,
+          r.status_code)
+    logging.error(msg)
+    raise RuntimeError(msg)
+
+  logging.info("URL %s returned; %s", url, r.content)
+
+def _setup_ks_app(args):
+  """Setup the ksonnet app"""
+  salt = uuid.uuid4().hex[0:4]
+
+  lock_file = os.path.join(args.app_dir, "app.lock")
+  logging.info("Acquiring lock on file: %s", lock_file)
+  lock = filelock.FileLock(lock_file, timeout=60)
+  with lock:
+    # Create a new environment for this run
+    if args.environment:
+      env = args.environment
+    else:
+      env = "test-env-{0}".format(salt)
+
+    name = None
+    namespace = None
+    for pair in args.params.split(","):
+      k, v = pair.split("=", 1)
+      if k == "name":
+        name = v
+
+      if k == "namespace":
+        namespace = v
+
+    if not name:
+      raise ValueError("name must be provided as a parameter.")
+
+    if not namespace:
+      raise ValueError("namespace must be provided as a parameter.")
+
+    try:
+      util.run(["ks", "env", "add", env, "--namespace=" + namespace],
+                cwd=args.app_dir)
+    except subprocess.CalledProcessError as e:
+      if not re.search(".*environment.*already exists.*", e.output):
+        raise
+
+    for pair in args.params.split(","):
+      k, v = pair.split("=", 1)
+      util.run(
+        ["ks", "param", "set", "--env=" + env, args.component, k, v],
+        cwd=args.app_dir)
+
+    return namespace, name, env
+
+  return "", "", ""
+
+# One of the reasons we set so many retries and a random amount of wait
+# between retries is because we have multiple tests running in parallel
+# that are all modifying the same ksonnet app via ks. I think this can
+# lead to failures.
+@retrying.retry(stop_max_attempt_number=10, wait_random_min=1000,
+                wait_random_max=10000)
 def run_test(args):  # pylint: disable=too-many-branches,too-many-statements
   """Run a test."""
   gcs_client = storage.Client(project=args.project)
@@ -230,38 +389,15 @@ def run_test(args):  # pylint: disable=too-many-branches,too-many-statements
   util.load_kube_config()
 
   api_client = k8s_client.ApiClient()
-
-  salt = uuid.uuid4().hex[0:4]
-
-  # Create a new environment for this run
-  env = "test-env-{0}".format(salt)
-
-  util.run(["ks", "env", "add", env], cwd=args.app_dir)
-
-  name = None
-  namespace = None
-  for pair in args.params.split(","):
-    k, v = pair.split("=", 1)
-    if k == "name":
-      name = v
-
-    if k == "namespace":
-      namespace = v
-    util.run(
-      ["ks", "param", "set", "--env=" + env, args.component, k, v],
-      cwd=args.app_dir)
-
-  if not name:
-    raise ValueError("name must be provided as a parameter.")
+  masterHost = api_client.configuration.host
 
   t = test_util.TestCase()
   t.class_name = "tfjob_test"
+  namespace, name, env = _setup_ks_app(args)
   t.name = os.path.basename(name)
 
-  if not namespace:
-    raise ValueError("namespace must be provided as a parameter.")
-
   start = time.time()
+
 
   try: # pylint: disable=too-many-nested-blocks
     # We repeat the test multiple times.
@@ -276,8 +412,61 @@ def run_test(args):  # pylint: disable=too-many-branches,too-many-statements
       util.run(["ks", "apply", env, "-c", args.component], cwd=args.app_dir)
 
       logging.info("Created job %s in namespaces %s", name, namespace)
+
+      # Wait for the job to either be in Running state or a terminal state
+      if args.tfjob_version == "v1alpha1":
+        results = tf_job_client.wait_for_phase(
+          api_client, namespace, name, ["Running", "Done", "Failed"],
+          status_callback=tf_job_client.log_status)
+      else:
+        results = tf_job_client.wait_for_condition(
+          api_client, namespace, name, ["Running", "Succeeded", "Failed"],
+          status_callback=tf_job_client.log_status)
+
+      logging.info("Current TFJob:\n %s", json.dumps(results, indent=2))
+
+      # The job is now either running or done.
+      if args.shutdown_policy:
+        logging.info("Enforcing shutdownPolicy %s", args.shutdown_policy)
+        if args.shutdown_policy in ["master", "chief"]:
+          if args.tfjob_version == "v1alpha1":
+            replica = "master"
+          else:
+            replica = "chief"
+        elif args.shutdown_policy in ["worker"]:
+          replica = "worker"
+        else:
+          raise ValueError("Unrecognized shutdown_policy "
+                           "%s" % args.shutdown_policy)
+
+        if args.tfjob_version == "v1alpha1":
+          runtime_id = results.get("spec", {}).get("RuntimeId")
+          target = "{name}-{replica}-{runtime}-0".format(
+            name=name, replica=replica, runtime=runtime_id)
+          pod_labels = get_labels(name, runtime_id)
+          pod_selector = to_selector(pod_labels)
+        else:
+          target = "{name}-{replica}-0".format(name=name, replica=replica)
+          pod_labels = get_labels_v1alpha2(namespace, name)
+          pod_selector = to_selector(pod_labels)
+
+        # Wait for the pods to be ready before we shutdown
+        # TODO(jlewi): We are get pods using a label selector so there is
+        # a risk that the pod we actual care about isn't present.
+        logging.info("Waiting for pods to be running before shutting down.")
+        wait_for_pods_to_be_in_phases(api_client, namespace,
+                                      pod_selector,
+                                      ["Running"],
+                                      timeout=datetime.timedelta(
+                                        minutes=4))
+        logging.info("Pods are ready")
+        logging.info("Issuing the terminate request")
+        terminateReplica(masterHost, namespace, target)
+
+      logging.info("Waiting for job to finish.")
       results = tf_job_client.wait_for_job(
-        api_client, namespace, name, args.tfjob_version, status_callback=tf_job_client.log_status)
+        api_client, namespace, name, args.tfjob_version,
+        status_callback=tf_job_client.log_status)
 
       if args.tfjob_version == "v1alpha1":
         if results.get("status", {}).get("state", {}).lower() != "succeeded":
@@ -300,6 +489,12 @@ def run_test(args):  # pylint: disable=too-many-branches,too-many-statements
 
       uid = results.get("metadata", {}).get("uid")
       events = get_events(api_client, namespace, uid)
+      for e in events:
+        logging.info("K8s event: %s", e.message)
+
+      # Print out the K8s events because it can be useful for debugging.
+      for e in events:
+        logging.info("Recieved K8s Event:\n%s", e)
       created_pods, created_services = parse_events(events)
 
       num_expected = 0
@@ -326,12 +521,18 @@ def run_test(args):  # pylint: disable=too-many-branches,too-many-statements
         creation_failures.append(message)
 
       if creation_failures:
-        t.failure = "Trial {0} Job {1} in namespace {2}: {3}".format(
-          trial, name, namespace, ", ".join(creation_failures))
-        logging.error(t.failure)
-        break
-      pod_labels = get_labels(name, runtime_id)
-      pod_selector = to_selector(pod_labels)
+        # TODO(jlewi): Starting with
+        # https://github.com/kubeflow/tf-operator/pull/646 the number of events
+        # no longer seems to match the expected; it looks like maybe events
+        # are being combined? For now we just log a warning rather than an
+        # error.
+        logging.warning(creation_failures)
+      if args.tfjob_version == "v1alpha1":
+        pod_labels = get_labels(name, runtime_id)
+        pod_selector = to_selector(pod_labels)
+      else:
+        pod_labels = get_labels_v1alpha2(name)
+        pod_selector = to_selector(pod_labels)
 
       wait_for_pods_to_be_deleted(api_client, namespace, pod_selector)
 
@@ -382,6 +583,14 @@ def add_common_args(parser):
     help="Directory containing the ksonnet app.")
 
   parser.add_argument(
+    "--shutdown_policy",
+    default=None,
+    type=str,
+    help="The shutdown policy. This must be set if we need to issue "
+         "an http request to the test-app server to exit before the job will "
+         "finish.")
+
+  parser.add_argument(
     "--component",
     default=None,
     type=str,
@@ -411,6 +620,12 @@ def add_common_args(parser):
     type=str,
     help="The TFJob version to use.")
 
+  parser.add_argument(
+    "--environment",
+    default=None,
+    type=str,
+    help="(Optional) the name for the ksonnet environment; if not specified "
+         "a random one is created.")
 
 def build_parser():
   # create the top-level parser

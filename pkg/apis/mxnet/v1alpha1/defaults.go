@@ -23,7 +23,7 @@ func addDefaultingFuncs(scheme *runtime.Scheme) error {
 	return RegisterDefaults(scheme)
 }
 
-// SetDefaults_TFJob initializes any uninitialized values to default values
+// SetDefaults_MXJob initializes any uninitialized values to default values
 func SetDefaults_MXJob(obj *MXJob) {
 	c := &obj.Spec
 
@@ -31,7 +31,7 @@ func SetDefaults_MXJob(obj *MXJob) {
 		c.MXImage = DefaultMXImage
 	}
 
-	// Check that each replica has a TensorFlow container.
+	// Check that each replica has a MXNet container.
 	for _, r := range c.ReplicaSpecs {
 
 		if r.MXPort == nil {
@@ -39,7 +39,7 @@ func SetDefaults_MXJob(obj *MXJob) {
 		}
 
 		if string(r.MXReplicaType) == "" {
-			r.MXReplicaType = MASTER
+			r.MXReplicaType = SCHEDULER
 		}
 
 		if r.Replicas == nil {
@@ -49,7 +49,7 @@ func SetDefaults_MXJob(obj *MXJob) {
 	if c.TerminationPolicy == nil {
 		c.TerminationPolicy = &TerminationPolicySpec{
 			Chief: &ChiefSpec{
-				ReplicaName:  "MASTER",
+				ReplicaName:  "SCHEDULER",
 				ReplicaIndex: 0,
 			},
 		}

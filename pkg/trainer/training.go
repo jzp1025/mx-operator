@@ -30,13 +30,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 
-	"github.com/jzp1025/mx-operator/pkg/apis/mxnet/helper"
-	mxv1alpha1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
-	"github.com/jzp1025/mx-operator/pkg/apis/mxnet/validation"
-	mxjobclient "github.com/jzp1025/mx-operator/pkg/client/clientset/versioned"
-	"github.com/jzp1025/mx-operator/pkg/client/clientset/versioned/scheme"
-	"github.com/jzp1025/mx-operator/pkg/util"
-	train_util "github.com/jzp1025/mx-operator/pkg/util/train"
+	"github.com/kubeflow/mx-operator/pkg/apis/mxnet/helper"
+	mxv1alpha1 "github.com/kubeflow/mx-operator/pkg/apis/mxnet/v1alpha1"
+	"github.com/kubeflow/mx-operator/pkg/apis/mxnet/validation"
+	mxjobclient "github.com/kubeflow/mx-operator/pkg/client/clientset/versioned"
+	"github.com/kubeflow/mx-operator/pkg/client/clientset/versioned/scheme"
+	"github.com/kubeflow/mx-operator/pkg/util"
+	train_util "github.com/kubeflow/mx-operator/pkg/util/train"
 )
 
 // TODO(jlewi): We should switch a New pattern and make trainingJob private so we can
@@ -66,7 +66,7 @@ type TrainingJob struct {
 	contextLogger *log.Entry
 }
 
-// ClusterSpec represents a cluster TensorFlow specification.
+// ClusterSpec represents a cluster MXNet specification.
 // https://www.tensorflow.org/deploy/distributed#create_a_tftrainclusterspec_to_describe_the_cluster
 // It is a map from job names to network addresses.
 type ClusterSpec map[string][]string
@@ -108,7 +108,7 @@ func NewJob(kubeCli kubernetes.Interface, mxJobClient mxjobclient.Interface, rec
 	return j, nil
 }
 
-// Update replaces the TFJob corresponding to TrainingJob with the provided job.
+// Update replaces the MXJob corresponding to TrainingJob with the provided job.
 // This function is used when the Spec/Status of the job is modified outside the controller.
 // For example, if the user issues a delete request. This will update the metadata on the object
 // so we need to replace the spec.
@@ -139,8 +139,22 @@ func (j *TrainingJob) ClusterSpec() ClusterSpec {
 	return clusterSpec
 }
 
+// cleanResourcesByCleanPolicy deletes the replicas by following the policy CleanupAll, CleanupNone, CleanupRunning, the default is CleanupAll
+func (j *TrainingJob) deleteResourcesByCleanPolicy() error {
+	log.Infof("deleteResourcesByCleanPolicy for %s, %v", j.job.ObjectMeta.Name, j.Replicas)
+	for _, r := range j.Replicas {
+		log.Infof("deleteResourcesByCleanPolicy for %s, %v", j.job.ObjectMeta.Name, r)
+		if err := r.DeleteResourcesByCleanPolicy(j.job.Spec.CleanupPodPolicy); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // deleteResources deletes the replicas it it was created
 func (j *TrainingJob) deleteResources() error {
+	log.Infof("deleteResources()")
 	for _, r := range j.Replicas {
 		if err := r.Delete(); err != nil {
 			return err
@@ -205,9 +219,9 @@ func isRetryableTerminationState(s *v1.ContainerStateTerminated) bool {
 	return train_util.IsRetryableExitCode(s.ExitCode)
 }
 
-// masterName returns the name of master replica of provided training job
-func (j *TrainingJob) masterName() string {
-	return fmt.Sprintf("master-%v-0", j.job.Spec.RuntimeId)
+// masterName returns the name of scheduler replica of provided training job
+func (j *TrainingJob) schedulerName() string {
+	return fmt.Sprintf("scheduler-%v-0", j.job.Spec.RuntimeId)
 }
 
 // setup the training job.
@@ -277,7 +291,7 @@ func (j *TrainingJob) Delete() {
 
 	// TODO(jlewi): Does it make sense to explicitly delete the resources? Should
 	// we just rely on K8s garbage collection to delete the resources before
-	// deleting TFJob?
+	// deleting MXJob?
 	if cErr := j.deleteResources(); cErr != nil {
 		j.contextLogger.Errorf("trainingJob.deleteResources() error; %v", cErr)
 	}
@@ -407,8 +421,10 @@ func (j *TrainingJob) Reconcile(config *mxv1alpha1.ControllerConfig, enableGangS
 		}
 	}
 
+	// When the job is done or failed, we need to determine if we need clean up the resource
 	if j.job.Status.Phase == mxv1alpha1.MXJobPhaseCleanUp {
-		if cErr := j.deleteResources(); cErr != nil {
+		j.contextLogger.Infof("Handle clean up policy when the mxjob %s is done.", j.job.ObjectMeta.Name)
+		if cErr := j.deleteResourcesByCleanPolicy(); cErr != nil {
 			j.contextLogger.Errorf("Job %v trainingJob.Delete() error; %v", j.job.ObjectMeta.Name, cErr)
 			// Return an error so that we stay in phase cleanup and retry.
 			return cErr
@@ -444,7 +460,7 @@ func (j *TrainingJob) SchedulerName() string {
 
 // genPdbName generate a new pdb name
 func (j *TrainingJob) genPdbName() string {
-	return "tf-job-pdb-" + j.job.ObjectMeta.Name
+	return "mx-job-pdb-" + j.job.ObjectMeta.Name
 }
 
 func (j *TrainingJob) CreatePdb(nrReplicas int32) (*v1beta1.PodDisruptionBudget, error) {

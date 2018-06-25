@@ -35,12 +35,12 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	"github.com/juju/ratelimit"
-	mxv1alpha1 "github.com/jzp1025/mx-operator/pkg/apis/mxnet/v1alpha1"
-	mxjobclient "github.com/jzp1025/mx-operator/pkg/client/clientset/versioned"
-	kubeflowscheme "github.com/jzp1025/mx-operator/pkg/client/clientset/versioned/scheme"
-	informers "github.com/jzp1025/mx-operator/pkg/client/informers/externalversions"
-	listers "github.com/jzp1025/mx-operator/pkg/client/listers/kubeflow/v1alpha1"
-	"github.com/jzp1025/mx-operator/pkg/trainer"
+	mxv1alpha1 "github.com/kubeflow/mx-operator/pkg/apis/mxnet/v1alpha1"
+	mxjobclient "github.com/kubeflow/mx-operator/pkg/client/clientset/versioned"
+	kubeflowscheme "github.com/kubeflow/mx-operator/pkg/client/clientset/versioned/scheme"
+	informers "github.com/kubeflow/mx-operator/pkg/client/informers/externalversions"
+	listers "github.com/kubeflow/mx-operator/pkg/client/listers/kubeflow/v1alpha1"
+	"github.com/kubeflow/mx-operator/pkg/trainer"
 )
 
 const (
@@ -86,7 +86,7 @@ type Controller struct {
 	// workers simultaneously.
 	//
 	// We rely on the informer to periodically generate Update events. This ensures
-	// we regularly check on each TFJob and take any action needed.
+	// we regularly check on each MXJob and take any action needed.
 	//
 	// If there is a problem processing a job, processNextWorkItem just requeues
 	// the work item. This ensures that we end up retrying it. In this case
@@ -127,7 +127,7 @@ func New(kubeClient kubernetes.Interface, mxJobClient mxjobclient.Interface,
 
 	controller := &Controller{
 		KubeClient:  kubeClient,
-		MXJobClient: tfJobClient,
+		MXJobClient: mxJobClient,
 		WorkQueue:   workqueue.NewNamedRateLimitingQueue(rateLimiter, "MXjobs"),
 		recorder:    recorder,
 		// TODO(jlewi)): What to do about cluster.Cluster?
@@ -183,7 +183,7 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	}
 
 	log.Infof("Starting %v workers", threadiness)
-	// Launch workers to process TFJob resources
+	// Launch workers to process MXJob resources
 	for i := 0; i < threadiness; i++ {
 		go wait.Until(c.runWorker, time.Second, stopCh)
 	}
@@ -233,7 +233,7 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
-// syncTFJob will sync the job with the given. This function is not meant to be invoked
+// syncMXJob will sync the job with the given. This function is not meant to be invoked
 // concurrently with the same key.
 //
 // When a job is completely processed it will return true indicating that its ok to forget about this job since
@@ -282,7 +282,7 @@ func (c *Controller) syncMXJob(key string) (bool, error) {
 		}
 		c.jobs[key] = nc
 	} else {
-		// Replace the TFJob stored inside TrainingJob with the latest job.
+		// Replace the MXJob stored inside TrainingJob with the latest job.
 		// We need to do this to pull in the latest changes to the spec/status.
 		c.jobs[key].Update(mxJob)
 	}
