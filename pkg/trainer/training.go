@@ -69,7 +69,7 @@ type TrainingJob struct {
 // ClusterSpec represents a cluster MXNet specification.
 // https://www.tensorflow.org/deploy/distributed#create_a_tftrainclusterspec_to_describe_the_cluster
 // It is a map from job names to network addresses.
-type ClusterSpec map[string][]string
+type ClusterSpec map[string]string
 
 // TaskSpec represents a Task specification.
 type TaskSpec struct {
@@ -127,13 +127,13 @@ func (j *TrainingJob) ClusterSpec() ClusterSpec {
 	clusterSpec := make(ClusterSpec)
 
 	for _, p := range j.Replicas {
-		replicaNames := make([]string, 0, *p.Spec.Replicas)
-
-		for i := int32(0); i < *p.Spec.Replicas; i++ {
-			replicaNames = append(replicaNames, fmt.Sprintf("%v:%v", p.genName(i), *p.Spec.MXPort))
+		var replicaNames string = fmt.Sprintf("%v", p.genName(0))
+            
+  		if string(p.Spec.MXReplicaType) == "SCHEDULER" {
+			clusterSpec["ip"] = replicaNames
 		}
 
-		clusterSpec[strings.ToLower(string(p.Spec.MXReplicaType))] = replicaNames
+		clusterSpec[strings.ToLower(string(p.Spec.MXReplicaType))] = fmt.Sprintf("%d", *p.Spec.Replicas)
 	}
 
 	return clusterSpec

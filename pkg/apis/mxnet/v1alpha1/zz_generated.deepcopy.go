@@ -257,8 +257,8 @@ func (in *MXReplicaSpec) DeepCopyInto(out *MXReplicaSpec) {
 		*out = new(v1.PodTemplateSpec)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.MXPort != nil {
-		in, out := &in.MXPort, &out.MXPort
+	if in.PsRootPort != nil {
+		in, out := &in.PsRootPort, &out.PsRootPort
 		*out = new(int32)
 		**out = **in
 	}

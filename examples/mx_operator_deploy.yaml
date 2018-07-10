@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mx-job-operator
+  labels:
+    name: mx-job-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: mx-job-operator
+  template:
+    metadata:
+      labels:
+        name: mx-job-operator
+    spec:
+      containers:
+      - name: mx-job-operator
+        image: jzp1025/mx-operator
+        imagePullPolicy: Always
+        command:
+          - /opt/mlkube/mx_operator
+          - --controller_config_file=/etc/config/controller_config_file.yaml          
+          - -alsologtostderr
+          - -v=8
+        env:
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+

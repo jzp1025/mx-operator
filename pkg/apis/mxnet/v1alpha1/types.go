@@ -27,8 +27,9 @@ const (
 	// Value of the APP label that gets applied to a lot of entities.
 	AppLabel = "tensorflow-job"
 	// Defaults for the Spec
-	MXPort   = 2222
 	Replicas = 1
+	PsRootPort = 9091
+
 )
 
 // +genclient
@@ -43,6 +44,16 @@ type MXJob struct {
 	Spec              MXJobSpec   `json:"spec"`
 	Status            MXJobStatus `json:"status"`
 }
+
+// JobMode mxnet job mode
+type JobMode string
+
+const (
+	// LocalJob job kind local
+	LocalJob JobMode = "local"
+	// DistJob job kind distribution
+	DistJob JobMode = "dist"
+)
 
 // MXJobSpec structure for storing the MXJob specifications
 type MXJobSpec struct {
@@ -63,6 +74,9 @@ type MXJobSpec struct {
 
 	// SchedulerName specifies the name of scheduler which should handle the MXJob
 	SchedulerName string `json:"schedulerName,omitempty"`
+
+	// JobMode MXNet training job mode: local, dist
+	JobMode `json:"jobMode"`
 }
 
 // CleanupPodPolicy defines all kinds of types of cleanPodPolicy.
@@ -97,8 +111,8 @@ const (
 )
 
 const (
-	DefaultMXContainer string = "tensorflow"
-	DefaultMXImage     string = "tensorflow/tensorflow:1.3.0"
+	DefaultMXContainer string = "mxnet"
+	DefaultMXImage     string = "jzp1025/mxnet:cpu"
 )
 
 // TODO(jlewi): We probably want to add a name field. This would allow us to have more than 1 type of each worker.
@@ -111,9 +125,9 @@ type MXReplicaSpec struct {
 	// +optional
 	Replicas *int32              `json:"replicas,omitempty" protobuf:"varint,1,opt,name=replicas"`
 	Template *v1.PodTemplateSpec `json:"template,omitempty" protobuf:"bytes,3,opt,name=template"`
-	// MXPort is the port to use for MX services.
-	MXPort        *int32 `json:"mxPort,omitempty" protobuf:"varint,1,opt,name=mxPort"`
+	// PsRootPort is the port to use for MX services.
 	MXReplicaType `json:"mxReplicaType"`
+	PsRootPort *int32 `json:"PsRootPort,omitempty" protobuf:"varint,1,opt,name=PsRootPort"`
 }
 
 // MXJobPhase is a enum to store the phase of mx job

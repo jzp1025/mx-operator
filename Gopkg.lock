@@ -182,6 +182,43 @@
   version = "1.0.1"
 
 [[projects]]
+  name = "github.com/kubeflow/tf-operator"
+  packages = [
+    "cmd/tf-operator.v2/app",
+    "cmd/tf-operator.v2/app/options",
+    "dashboard/backend/client",
+    "dashboard/backend/handler",
+    "pkg/apis/tensorflow/v1alpha1",
+    "pkg/apis/tensorflow/v1alpha2",
+    "pkg/client/clientset/versioned",
+    "pkg/client/clientset/versioned/fake",
+    "pkg/client/clientset/versioned/scheme",
+    "pkg/client/clientset/versioned/typed/kubeflow/v1alpha1",
+    "pkg/client/clientset/versioned/typed/kubeflow/v1alpha1/fake",
+    "pkg/client/clientset/versioned/typed/kubeflow/v1alpha2",
+    "pkg/client/clientset/versioned/typed/kubeflow/v1alpha2/fake",
+    "pkg/client/informers/externalversions",
+    "pkg/client/informers/externalversions/internalinterfaces",
+    "pkg/client/informers/externalversions/kubeflow",
+    "pkg/client/informers/externalversions/kubeflow/v1alpha1",
+    "pkg/client/informers/externalversions/kubeflow/v1alpha2",
+    "pkg/client/listers/kubeflow/v1alpha1",
+    "pkg/client/listers/kubeflow/v1alpha2",
+    "pkg/control",
+    "pkg/controller.v2",
+    "pkg/generator",
+    "pkg/util",
+    "pkg/util/k8sutil",
+    "pkg/util/signals",
+    "pkg/util/testutil",
+    "pkg/util/train",
+    "pkg/util/unstructured",
+    "pkg/version"
+  ]
+  revision = "38b886a0af6e08c31d93c1db6b49f4f79ab8de1e"
+  version = "v0.2.0-rc1"
+
+[[projects]]
   branch = "master"
   name = "github.com/mailru/easyjson"
   packages = [
@@ -811,6 +848,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "b88207f848c206b81fca12791c3aa5f0c82fdfbf25133787ad41d3509220a500"
+  inputs-digest = "31811eadabe293d45fb9d9d5a85531fc0abc7c42b1161a623024b8503c01c8bf"
   solver-name = "gps-cdcl"
   solver-version = 1

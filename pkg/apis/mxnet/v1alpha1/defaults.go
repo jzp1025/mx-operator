@@ -34,12 +34,11 @@ func SetDefaults_MXJob(obj *MXJob) {
 	// Check that each replica has a MXNet container.
 	for _, r := range c.ReplicaSpecs {
 
-		if r.MXPort == nil {
-			r.MXPort = proto.Int32(MXPort)
-		}
-
+		if r.PsRootPort == nil {
+			r.PsRootPort = proto.Int32(PsRootPort)
+}	
 		if string(r.MXReplicaType) == "" {
-			r.MXReplicaType = SCHEDULER
+			r.MXReplicaType = WORKER
 		}
 
 		if r.Replicas == nil {

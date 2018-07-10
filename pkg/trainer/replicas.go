@@ -15,10 +15,10 @@
 package trainer
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"strconv"
 
 	log "github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
@@ -78,12 +78,14 @@ func NewMXReplicaSet(clientSet kubernetes.Interface, recorder record.EventRecord
 		return nil, errors.New("The SCHEDULER must have Replicas = 1")
 	}
 
-	if mxReplicaSpec.MXPort == nil {
-		return nil, errors.New("mxReplicaSpec.MXPort can't be nil.")
+	if mxReplicaSpec.MXReplicaType == mxv1alpha1.SCHEDULER {
+		if mxReplicaSpec.PsRootPort == nil {
+			return nil, errors.New("mxReplicaSpec.PsRootPort can't be nil.")
+		}
 	}
 
-	if mxReplicaSpec.Template == nil && mxReplicaSpec.MXReplicaType != mxv1alpha1.SERVER {
-		return nil, fmt.Errorf("mxReplicamxv1alpha1.Template can't be nil for replica type %v.", mxReplicaSpec.MXReplicaType)
+	if mxReplicaSpec.Template == nil {
+		return nil, errors.New("mxReplicaSpec.Template can't be nil.")
 	}
 
 	// Make sure the replica type is valid.
@@ -155,8 +157,8 @@ func (s *MXReplicaSet) CreateServiceWithIndex(index int32) (*v1.Service, error) 
 			ClusterIP: "None",
 			Ports: []v1.ServicePort{
 				{
-					Name: "mx-port",
-					Port: *s.Spec.MXPort,
+					Name: "ps-root-port",
+					Port: *s.Spec.PsRootPort,
 				},
 			},
 		},
@@ -199,22 +201,6 @@ func (s *MXReplicaSet) CreatePodWithIndex(index int32) (*v1.Pod, error) {
 		}
 	}
 
-	// Configure the MXCONFIG environment variable.
-	mxConfig := MXConfig{
-		Cluster: s.Job.ClusterSpec(),
-		Task: TaskSpec{
-			Type:  strings.ToLower(string(s.Spec.MXReplicaType)),
-			Index: int(index),
-		},
-		// We need to set environment to cloud  otherwise it will default to local which isn't what we want.
-		Environment: "cloud",
-	}
-
-	mxConfigJson, err := json.Marshal(mxConfig)
-	if err != nil {
-		s.contextLogger.Errorf("Job: %v serializing mxConfig: %v return error; %v", s.Job.job.ObjectMeta.Name, util.Pformat(mxConfig), err)
-		return nil, err
-	}
 
 	// Add MX_CONFIG environment variable.
 	for i := range pod.Spec.Containers {
@@ -225,12 +211,26 @@ func (s *MXReplicaSet) CreatePodWithIndex(index int32) (*v1.Pod, error) {
 			continue
 		}
 		if len(c.Env) == 0 {
-			c.Env = make([]v1.EnvVar, 0)
+			c.Env = make([]v1.EnvVar, 5)
 		}
-		c.Env = append(c.Env, v1.EnvVar{
-			Name:  "MX_CONFIG",
-			Value: string(mxConfigJson),
-		})
+		
+		for _, r := range s.Job.job.Spec.ReplicaSpecs {
+			switch r.MXReplicaType {
+			case mxv1alpha1.SCHEDULER:
+				c.Env[0].Name = "DMLC_PS_ROOT_PORT"
+				c.Env[0].Value = strconv.Itoa(int(*r.PsRootPort))
+				c.Env[1].Name = "DMLC_PS_ROOT_URI"
+				c.Env[1].Value = fmt.Sprintf("%v-%v-%v-%v", s.Job.job.ObjectMeta.Name, strings.ToLower(string(r.MXReplicaType)), s.Job.job.Spec.RuntimeId, 0)
+			case mxv1alpha1.SERVER:
+				c.Env[2].Name = "DMLC_NUM_SERVER"
+				c.Env[2].Value = strconv.Itoa(int(*r.Replicas))
+			case mxv1alpha1.WORKER:
+				c.Env[3].Name = "DMLC_NUM_WORKER"
+				c.Env[3].Value = strconv.Itoa(int(*r.Replicas))
+			}
+		}
+		c.Env[4].Name = "DMLC_ROLE"
+		c.Env[4].Value = strings.ToLower(string(s.Spec.MXReplicaType))
 	}
 
 	s.contextLogger.WithFields(log.Fields{
@@ -325,29 +325,31 @@ func (s *MXReplicaSet) Delete() error {
 
 	// Services doesn't support DeleteCollection so we delete them individually.
 	// TODO(jlewi): We should check if this has changed with K8s 1.8 or other releases.
-	for index := int32(0); index < *s.Spec.Replicas; index++ {
-		s.contextLogger.WithFields(log.Fields{
-			indexField: index,
-		}).Infof("Deleting Service %v:%v", s.Job.job.ObjectMeta.Namespace, s.genName((index)))
-		err = s.ClientSet.CoreV1().Services(s.Job.job.ObjectMeta.Namespace).Delete(s.genName(index), &meta_v1.DeleteOptions{})
-
-		if err != nil {
-			s.contextLogger.Errorf("Error deleting service %v; %v", s.genName(index), err)
-			failures = true
+	if s.Spec.MXReplicaType == mxv1alpha1.SCHEDULER {
+		for index := int32(0); index < *s.Spec.Replicas; index++ {
+			s.contextLogger.WithFields(log.Fields{
+				indexField: index,
+			}).Infof("Deleting Service %v:%v", s.Job.job.ObjectMeta.Namespace, s.genName((index)))
+			err = s.ClientSet.CoreV1().Services(s.Job.job.ObjectMeta.Namespace).Delete(s.genName(index), &meta_v1.DeleteOptions{})
+	
+			if err != nil {
+				s.contextLogger.Errorf("Error deleting service %v; %v", s.genName(index), err)
+				failures = true
+			}
 		}
 	}
 
 	// If the ConfigMap for the default parameter server exists, we delete it
-	s.contextLogger.Infof("Get ConfigMaps %v:%v", s.Job.job.ObjectMeta.Namespace, s.defaultPSConfigMapName())
-	_, err = s.ClientSet.CoreV1().ConfigMaps(s.Job.job.ObjectMeta.Namespace).Get(s.defaultPSConfigMapName(), meta_v1.GetOptions{})
+	s.contextLogger.Infof("Get ConfigMaps %v:%v", s.Job.job.ObjectMeta.Namespace, s.defaultSERVERConfigMapName())
+	_, err = s.ClientSet.CoreV1().ConfigMaps(s.Job.job.ObjectMeta.Namespace).Get(s.defaultSERVERConfigMapName(), meta_v1.GetOptions{})
 	if err != nil {
 		if !k8sutil.IsKubernetesResourceNotFoundError(err) {
-			s.contextLogger.Errorf("Error deleting ConfigMap %v; %v", s.defaultPSConfigMapName(), err)
+			s.contextLogger.Errorf("Error deleting ConfigMap %v; %v", s.defaultSERVERConfigMapName(), err)
 			failures = true
 		}
 	} else {
-		s.contextLogger.Infof("Delete ConfigMaps %v:%v", s.Job.job.ObjectMeta.Namespace, s.defaultPSConfigMapName())
-		err = s.ClientSet.CoreV1().ConfigMaps(s.Job.job.ObjectMeta.Namespace).Delete(s.defaultPSConfigMapName(), &meta_v1.DeleteOptions{})
+		s.contextLogger.Infof("Delete ConfigMaps %v:%v", s.Job.job.ObjectMeta.Namespace, s.defaultSERVERConfigMapName())
+		err = s.ClientSet.CoreV1().ConfigMaps(s.Job.job.ObjectMeta.Namespace).Delete(s.defaultSERVERConfigMapName(), &meta_v1.DeleteOptions{})
 		if err != nil {
 			s.contextLogger.Errorf("There was a problem deleting the ConfigMaps; %v", err)
 			failures = true
@@ -540,6 +542,10 @@ func (s *MXReplicaSet) SyncPods() error {
 
 // SyncServices will try to check current services for this MXReplicaSet and try to make it as desired.
 func (s *MXReplicaSet) SyncServices() error {
+	if s.Spec.MXReplicaType == mxv1alpha1.SCHEDULER {
+		return nil	
+	}
+	
 	for index := int32(0); index < *s.Spec.Replicas; index++ {
 		_, err := s.ClientSet.CoreV1().Services(s.Job.job.ObjectMeta.Namespace).Get(s.genName(index), meta_v1.GetOptions{})
 		if err != nil && k8s_errors.IsNotFound(err) {
@@ -584,7 +590,7 @@ func (s *MXReplicaSet) genPodName(index int32) string {
 	return s.genName(index) + "-" + util.RandString(5)
 }
 
-//  defaultPSConfigMapName returns the map default PS configuration map name using job's runtimeId
-func (s *MXReplicaSet) defaultPSConfigMapName() string {
-	return fmt.Sprintf("cm-ps-%v", s.Job.job.Spec.RuntimeId)
+//  defaultSERVERConfigMapName returns the map default PS configuration map name using job's runtimeId
+func (s *MXReplicaSet) defaultSERVERConfigMapName() string {
+	return fmt.Sprintf("cm-server-%v", s.Job.job.Spec.RuntimeId)
 }

@@ -15,7 +15,6 @@
 package validation
 
 import (
-	"errors"
 	"fmt"
 
 	mxv1 "github.com/kubeflow/mx-operator/pkg/apis/mxnet/v1alpha1"
@@ -41,9 +40,6 @@ func ValidateMXJobSpec(c *mxv1.MXJobSpec) error {
 			chiefExists = true
 		}
 
-		if r.MXPort == nil {
-			return errors.New("mxReplicaSpec.MXPort can't be nil.")
-		}
 
 		// Make sure the replica type is valid.
 		validReplicaTypes := []mxv1.MXReplicaType{mxv1.SCHEDULER, mxv1.SERVER, mxv1.WORKER}

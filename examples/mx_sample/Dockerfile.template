@@ -1,0 +1,7 @@
+FROM jzp1025/mxoperator
+RUN mkdir -p /opt/mxexample
+COPY train_mnist.py /opt/mxexample/
+
+
+
+ENTRYPOINT ["python", "/opt/mxexample/train_mnist.py"]
