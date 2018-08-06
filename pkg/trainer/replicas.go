@@ -207,9 +207,10 @@ func (s *MXReplicaSet) CreatePodWithIndex(index int32) (*v1.Pod, error) {
 		// We can't get c in the loop variable because that would be by value so our modifications
 		// wouldn't have any effect.
 		c := &pod.Spec.Containers[i]
-		if c.Name != mxv1alpha1.DefaultMXContainer {
-			continue
-		}
+		
+		//if c.Name != mxv1alpha1.DefaultMXContainer {
+		//	continue
+		//}
 		if len(c.Env) == 0 {
 			c.Env = make([]v1.EnvVar, 5)
 		}
@@ -325,17 +326,15 @@ func (s *MXReplicaSet) Delete() error {
 
 	// Services doesn't support DeleteCollection so we delete them individually.
 	// TODO(jlewi): We should check if this has changed with K8s 1.8 or other releases.
-	if s.Spec.MXReplicaType == mxv1alpha1.SCHEDULER {
-		for index := int32(0); index < *s.Spec.Replicas; index++ {
-			s.contextLogger.WithFields(log.Fields{
-				indexField: index,
-			}).Infof("Deleting Service %v:%v", s.Job.job.ObjectMeta.Namespace, s.genName((index)))
-			err = s.ClientSet.CoreV1().Services(s.Job.job.ObjectMeta.Namespace).Delete(s.genName(index), &meta_v1.DeleteOptions{})
-	
-			if err != nil {
-				s.contextLogger.Errorf("Error deleting service %v; %v", s.genName(index), err)
-				failures = true
-			}
+	for index := int32(0); index < *s.Spec.Replicas; index++ {
+		s.contextLogger.WithFields(log.Fields{
+			indexField: index,
+		}).Infof("Deleting Service %v:%v", s.Job.job.ObjectMeta.Namespace, s.genName((index)))
+		err = s.ClientSet.CoreV1().Services(s.Job.job.ObjectMeta.Namespace).Delete(s.genName(index), &meta_v1.DeleteOptions{})
+
+		if err != nil {
+			s.contextLogger.Errorf("Error deleting service %v; %v", s.genName(index), err)
+			failures = true
 		}
 	}
 
@@ -542,34 +541,39 @@ func (s *MXReplicaSet) SyncPods() error {
 
 // SyncServices will try to check current services for this MXReplicaSet and try to make it as desired.
 func (s *MXReplicaSet) SyncServices() error {
-	if s.Spec.MXReplicaType == mxv1alpha1.SCHEDULER {
-		return nil	
-	}
-	
-	for index := int32(0); index < *s.Spec.Replicas; index++ {
-		_, err := s.ClientSet.CoreV1().Services(s.Job.job.ObjectMeta.Namespace).Get(s.genName(index), meta_v1.GetOptions{})
-		if err != nil && k8s_errors.IsNotFound(err) {
-			s.contextLogger.Infof("Service: %v not found, create new one.", s.genName(index))
-			// Create the service
-			createdService, err := s.CreateServiceWithIndex(index)
+	if s.Spec.MXReplicaType == mxv1alpha1.SCHEDULER{
+		for index := int32(0); index < *s.Spec.Replicas; index++ {
+			_, err := s.ClientSet.CoreV1().Services(s.Job.job.ObjectMeta.Namespace).Get(s.genName(index), meta_v1.GetOptions{})
 
-			// If the service already exists do nothing.
+	   		s.contextLogger.Infof("Service: %v check ++++++++++++++++++++!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",index)
 			if err != nil {
-				if k8s_errors.IsAlreadyExists(err) {
-					s.contextLogger.Infof("Service: %v already exists.", s.genName(index))
-					continue
-				}
-				s.recorder.Eventf(s.Job.job, v1.EventTypeWarning, FailedCreateReason, "Error creating: %v", err)
-				return k8sErrors.NewAggregate([]error{fmt.Errorf("Creating Service %v returned error.", createdService.ObjectMeta.Name), err})
+				s.contextLogger.Infof("Service: %v check error ++++++++++++++++++++!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",err)
 			}
 
-			s.recorder.Eventf(s.Job.job, v1.EventTypeNormal, SuccessfulCreateReason, "Created Service: %v", createdService.Name)
-			continue
-		}
+			if err != nil && k8s_errors.IsNotFound(err) {
+				s.contextLogger.Infof("Service: %v not found, create new one.", s.genName(index))
+				// Create the service
+				createdService, err := s.CreateServiceWithIndex(index)
 
-		if err != nil {
-			// TODO: handing this error
-			continue
+				// If the service already exists do nothing.
+				if err != nil {
+					if k8s_errors.IsAlreadyExists(err) {
+						s.contextLogger.Infof("Service: %v already exists.", s.genName(index))
+						continue
+					}
+					s.recorder.Eventf(s.Job.job, v1.EventTypeWarning, FailedCreateReason, "Error creating: %v", err)
+					return k8sErrors.NewAggregate([]error{fmt.Errorf("Creating Service %v returned error.", createdService.ObjectMeta.Name), err})
+				}
+
+				s.recorder.Eventf(s.Job.job, v1.EventTypeNormal, SuccessfulCreateReason, "Created Service: %v", createdService.Name)
+				continue
+			}
+
+			if err != nil {
+				// TODO: handing this error
+				continue
+			}
+			s.contextLogger.Infof("Service: %v error ++++++++++++++++++++!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",err)
 		}
 	}
 

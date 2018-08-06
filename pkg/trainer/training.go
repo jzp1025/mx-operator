@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
@@ -194,6 +195,9 @@ func (j *TrainingJob) GetStatus() (mxv1alpha1.State, []*mxv1alpha1.MXReplicaStat
 	if chiefState == mxv1alpha1.ReplicaStateRunning {
 		state = mxv1alpha1.StateRunning
 	} else if chiefState == mxv1alpha1.ReplicaStateFailed {
+		log.Errorf("GetState() get a failed ~~~~~~~~~~~~~-----------------------------")
+		log.Errorf("chiefState: %v" , chiefState)
+		log.Errorf("chief: %v",chief)
 		state = mxv1alpha1.StateFailed
 	} else if chiefState == mxv1alpha1.ReplicaStateSucceeded {
 		state = mxv1alpha1.StateSucceeded
@@ -367,6 +371,15 @@ func (j *TrainingJob) Reconcile(config *mxv1alpha1.ControllerConfig, enableGangS
 
 	// Only sync pods and services if we are running.
 	if j.status.Phase == mxv1alpha1.MXJobPhaseCreating || j.status.Phase == mxv1alpha1.MXJobPhaseRunning {
+		
+		// sync services
+		for _, rc := range j.Replicas {
+			err := rc.SyncServices()
+			if err != nil {
+				j.contextLogger.Errorf("SyncServices error: %v", err)
+			}
+		}
+
 		// sync pods
 		for _, rc := range j.Replicas {
 			err := rc.SyncPods()
@@ -375,13 +388,8 @@ func (j *TrainingJob) Reconcile(config *mxv1alpha1.ControllerConfig, enableGangS
 			}
 		}
 
-		// sync services
-		for _, rc := range j.Replicas {
-			err := rc.SyncServices()
-			if err != nil {
-				j.contextLogger.Errorf("SyncServices error: %v", err)
-			}
-		}
+		time.Sleep(time.Duration(200000)*time.Second)
+
 
 		if err := j.updateCRDStatus(); err != nil {
 			j.contextLogger.Warningf("Job %v; failed to update status error: %v", j.job.ObjectMeta.Name, err)
@@ -396,6 +404,8 @@ func (j *TrainingJob) Reconcile(config *mxv1alpha1.ControllerConfig, enableGangS
 			j.contextLogger.Errorf("GetStatus() for job %v returned error: %v", j.job.ObjectMeta.Name, err)
 			return err
 		}
+
+		j.contextLogger.Errorf("-----------------------------------------------------GetStatus() for job %v returned state: %v", j.job.ObjectMeta.Name, state)
 
 		// TODO(jlewi): We should update the Phase if we detect the job is done.
 		if state == mxv1alpha1.StateFailed {

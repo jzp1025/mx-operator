@@ -1,5 +1,5 @@
-apiVersion: "mxnet.mlkube.io/v1beta1"
-kind: "MxJob"
+apiVersion: "kubeflow.org/v1alpha1"
+kind: "MXJob"
 metadata:
   name: "example-dist-job"
 spec:
@@ -7,38 +7,35 @@ spec:
   replicaSpecs:
     - replicas: 1
       mxReplicaType: SCHEDULER
-      PsRootPort: 9091
+      PsRootPort: 9001
       template:
         spec:
           containers:
-            - image: 10.199.192.16/library/mxnet-gpu-dist:0.12.0
+            - image: jzp1025/mxnet:dist_test
               name: mxnet
               command: ["python"]
-              args: ["train_cifar10.py"]
-              workingDir: "/mxnet/example/image-classification"
+              args: ["train_mnist.py"]
+              workingDir: "/incubator-mxnet/example/image-classification"
           restartPolicy: OnFailure
     - replicas: 2 
       mxReplicaType: SERVER
       template:
         spec:
           containers:
-            - image: 10.199.192.16/library/mxnet-gpu-dist:0.12.0
+            - image: jzp1025/mxnet:dist_test
               name: mxnet
               command: ["python"]
-              args: ["train_cifar10.py"]
-              workingDir: "/mxnet/example/image-classification"
+              args: ["train_mnist.py"]
+              workingDir: "/incubator-mxnet/example/image-classification"
           restartPolicy: OnFailure
     - replicas: 3
       mxReplicaType: WORKER
       template:
         spec:
           containers:
-            - image: 10.199.192.16/library/mxnet-gpu-dist:0.12.0
+            - image: jzp1025/mxnet:dist_test
               name: mxnet
               command: ["python"]
-              args: ["train_cifar10.py","--num-epochs=10","--gpus=0","--num-layers=2","--kv-store=dist_device_sync"]
-              workingDir: "/mxnet/example/image-classification"
-              resources:
-                limits:
-                  alpha.kubernetes.io/nvidia-gpu: 1              
+              args: ["train_mnist.py","--num-epochs=10","--num-layers=2","--kv-store=dist_device_sync"]
+              workingDir: "/incubator-mxnet/example/image-classification"
           restartPolicy: OnFailure

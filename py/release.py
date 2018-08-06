@@ -25,15 +25,15 @@ from py import util
 # on PROW. But we choose sensible defaults so that we can run locally without
 # setting defaults.
 REPO_ORG = os.getenv("REPO_OWNER", "kubeflow")
-REPO_NAME = os.getenv("REPO_NAME", "tf-operator")
+REPO_NAME = os.getenv("REPO_NAME", "mx-operator")
 
 RESULTS_BUCKET = "kubeflow-ci-results"
-JOB_NAME = "tf-k8s-postsubmit"
+JOB_NAME = "mx-k8s-postsubmit"
 
-GCB_PROJECT = "tf-on-k8s-releasing"
+GCB_PROJECT = "mx-on-k8s-releasing"
 
 # Directory to checkout the source.
-REPO_DIR = "git_tensorflow_k8s"
+REPO_DIR = "git_mxnet_k8s"
 
 
 def get_latest_green_presubmit(gcs_client):
@@ -396,6 +396,8 @@ def build_local(args):
     logging.info("Directory %s  doesn't exist.", go_src_dir)
     logging.info("Creating symbolic link %s pointing to %s", go_src_dir,
                  src_dir)
+    print src_dir
+    print go_src_dir
     os.symlink(src_dir, go_src_dir)
 
   build_and_push(go_dir, src_dir, args)
