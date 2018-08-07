@@ -20,12 +20,12 @@ import (
 )
 
 const (
-	CRDKind       = "mxjob"
+	CRDKind       = "MXJob"
 	CRDKindPlural = "mxjobs"
 	CRDGroup      = "kubeflow.org"
 	CRDVersion    = "v1alpha1"
 	// Value of the APP label that gets applied to a lot of entities.
-	AppLabel = "tensorflow-job"
+	AppLabel = "mxnet-job"
 	// Defaults for the Spec
 	Replicas = 1
 	PsRootPort = 9091

@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 
 	log "github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
@@ -387,8 +386,6 @@ func (j *TrainingJob) Reconcile(config *mxv1alpha1.ControllerConfig, enableGangS
 				j.contextLogger.Errorf("SyncPods error: %v", err)
 			}
 		}
-
-		time.Sleep(time.Duration(200000)*time.Second)
 
 
 		if err := j.updateCRDStatus(); err != nil {

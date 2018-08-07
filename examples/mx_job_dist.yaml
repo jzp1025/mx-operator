@@ -7,7 +7,7 @@ spec:
   replicaSpecs:
     - replicas: 1
       mxReplicaType: SCHEDULER
-      PsRootPort: 9001
+      PsRootPort: 9000
       template:
         spec:
           containers:
