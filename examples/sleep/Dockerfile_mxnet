@@ -1,7 +1,7 @@
 FROM mxnet/python
 
 RUN rm -rf /mxnet \
-    && git clone --recursive https://github.com/apache/incubator-mxnet -b master
+    && git clone --recursive https://github.com/apache/incubator-mxnet -b v1.2.0
 
 RUN apt-get update \
     && apt-get install -y build-essential git \

@@ -78,8 +78,6 @@ if __name__ == '__main__':
 
     print "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
 
-    time.sleep(500000)
-
 
     # parse args
     parser = argparse.ArgumentParser(description="train mnist",

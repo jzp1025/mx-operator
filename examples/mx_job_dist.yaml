@@ -11,29 +11,29 @@ spec:
       template:
         spec:
           containers:
-            - image: jzp1025/mxnet:dist_test
+            - image: jzp1025/mxnet:test
               name: mxnet
               command: ["python"]
               args: ["train_mnist.py"]
               workingDir: "/incubator-mxnet/example/image-classification"
           restartPolicy: OnFailure
-    - replicas: 2 
+    - replicas: 1 
       mxReplicaType: SERVER
       template:
         spec:
           containers:
-            - image: jzp1025/mxnet:dist_test
+            - image: jzp1025/mxnet:test
               name: mxnet
               command: ["python"]
               args: ["train_mnist.py"]
               workingDir: "/incubator-mxnet/example/image-classification"
           restartPolicy: OnFailure
-    - replicas: 3
+    - replicas: 1
       mxReplicaType: WORKER
       template:
         spec:
           containers:
-            - image: jzp1025/mxnet:dist_test
+            - image: jzp1025/mxnet:test
               name: mxnet
               command: ["python"]
               args: ["train_mnist.py","--num-epochs=10","--num-layers=2","--kv-store=dist_device_sync"]

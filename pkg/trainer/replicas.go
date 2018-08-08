@@ -212,7 +212,7 @@ func (s *MXReplicaSet) CreatePodWithIndex(index int32) (*v1.Pod, error) {
 		//	continue
 		//}
 		if len(c.Env) == 0 {
-			c.Env = make([]v1.EnvVar, 5)
+			c.Env = make([]v1.EnvVar, 6)
 		}
 		
 		for _, r := range s.Job.job.Spec.ReplicaSpecs {
@@ -232,6 +232,8 @@ func (s *MXReplicaSet) CreatePodWithIndex(index int32) (*v1.Pod, error) {
 		}
 		c.Env[4].Name = "DMLC_ROLE"
 		c.Env[4].Value = strings.ToLower(string(s.Spec.MXReplicaType))
+		c.Env[5].Name = "DMLC_USE_KUBERNETES"
+		c.Env[5].Value = strconv.Itoa(1)
 	}
 
 	s.contextLogger.WithFields(log.Fields{
