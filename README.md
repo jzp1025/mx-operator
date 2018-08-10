@@ -1,101 +1,124 @@
-# K8s Custom Resource and Operator For TensorFlow jobs
-
-[![Build Status](https://travis-ci.org/kubeflow/tf-operator.svg?branch=master)](https://travis-ci.org/kubeflow/tf-operator)
-[![Coverage Status](https://coveralls.io/repos/github/kubeflow/tf-operator/badge.svg?branch=master)](https://coveralls.io/github/kubeflow/tf-operator?branch=master)
-[![Go Report Card](https://goreportcard.com/badge/github.com/kubeflow/tf-operator)](https://goreportcard.com/report/github.com/kubeflow/tf-operator)
-
-## Quick Links
-
-* [Prow test dashboard](https://k8s-testgrid.appspot.com/sig-big-data)
-* [Prow jobs dashboard](https://prow.k8s.io/?repo=kubeflow%2Ftf-operator)
-* [Argo UI for E2E tests](http://testing-argo.kubeflow.org)
+# K8s Custom Resource and Operator For MXNet jobs
 
 ## Overview
 
-TFJob provides a Kubernetes custom resource that makes it easy to
-run distributed or non-distributed TensorFlow jobs on Kubernetes.
+MXJob provides a Kubernetes custom resource that makes it easy to
+run distributed or non-distributed MXNet jobs on Kubernetes.
 
-Using a Custom Resource Definition (CRD) gives users the ability to create and manage TF Jobs just like builtin K8s resources. For example to
+Using a Custom Resource Definition (CRD) gives users the ability to create and manage MX Jobs just like builtin K8s resources. For example to
 create a job
 
 ```
-kubectl create -f examples/tf_job.yaml
+kubectl create -f examples/mxjob_sample/mx_job_dist.yaml 
 ```
 
 To list jobs
 
 ```bash
-kubectl get tfjobs
+kubectl get mxjobs
 
-NAME          KINDS
-example-job   TFJob.v1alpha.kubeflow.org
+NAME          CREATED AT
+example-dist-job   3m
 ```
-
-For additional information about motivation and design for the
-CRD please refer to
-[tf-job design document](tf_job_design_doc.md) and [design document proposal for v1alpha2](https://github.com/kubeflow/community/blob/master/proposals/tf-operator-design-v1alpha2.md).
 
 ### Requirements
 
-TFJob requires Kubernetes >= 1.8
- * CRDs required Kubernetes >= 1.7
- * TFJob depends on Garbage Collection for CRDs which is only supported
-   in >= 1.8
- * GPU support is evolving quickly and its best to use Kubernetes 1.8+
-   to get the latest features.
+kubelet : v1.11.1
+kubeadm : v1.11.1
 
-## Installing the TFJob CRD and operator on your k8s cluster
+Docker： 
+Client:
+ Version:      17.03.2-ce
+ API version:  1.27
+ Go version:   go1.6.2
+ Git commit:   f5ec1e2
+ Built:        Thu Jul  5 23:07:48 2018
+ OS/Arch:      linux/amd64
 
-Please refer to the [Kubeflow user guide](https://github.com/kubeflow/kubeflow/blob/master/user_guide.md).
+Server:
+ Version:      17.03.2-ce
+ API version:  1.27 (minimum version 1.12)
+ Go version:   go1.6.2
+ Git commit:   f5ec1e2
+ Built:        Thu Jul  5 23:07:48 2018
+ OS/Arch:      linux/amd64
+ Experimental: false
 
-We recommend deploying Kubeflow in order to use the TFJob operator.
+kubectl :
+Client Version: version.Info{Major:"1", Minor:"11", GitVersion:"v1.11.1", GitCommit:"b1b29978270dc22fecc592ac55d903350454310a", GitTreeState:"clean", BuildDate:"2018-07-17T18:53:20Z", GoVersion:"go1.10.3", Compiler:"gc", Platform:"linux/amd64"}
+Server Version: version.Info{Major:"1", Minor:"10", GitVersion:"v1.10.5", GitCommit:"32ac1c9073b132b8ba18aa830f46b77dcceb0723", GitTreeState:"clean", BuildDate:"2018-06-21T11:34:22Z", GoVersion:"go1.9.3", Compiler:"gc", Platform:"linux/amd64"}
+
+kubernetes : branch release-1.11
+
+incubator-mxnet : v1.2.0
+
+## Installing the MXJob CRD and operator on your k8s cluster
+
+
 
 ## Creating a job
 
-You create a job by defining a TFJob and then creating it with.
+You create a job by defining a MXJob and then creating it with.
 
 ```
-kubectl create -f https://raw.githubusercontent.com/kubeflow/tf-operator/master/examples/tf_job.yaml
+kubectl create -f https://raw.githubusercontent.com/jzp1025/mx-operator/master/examples/mxjob_sample/mx_job_dist.yaml 
 ```
 
 In this case the job spec looks like the following
 
 ```yaml
 apiVersion: "kubeflow.org/v1alpha1"
-kind: "TFJob"
+kind: "MXJob"
 metadata:
-  name: "example-job"
+  name: "example-dist-job"
 spec:
+  jobMode: "dist"
   replicaSpecs:
     - replicas: 1
-      tfReplicaType: MASTER
+      mxReplicaType: SCHEDULER
+      PsRootPort: 9000
       template:
         spec:
           containers:
-            - image: gcr.io/tf-on-k8s-dogfood/tf_sample:dc944ff
-              name: tensorflow
+            - image: jzp1025/mxnet:test
+              name: mxnet
+              command: ["python"]
+              args: ["train_mnist.py"]
+              workingDir: "/incubator-mxnet/example/image-classification"
+          restartPolicy: OnFailure
+    - replicas: 1 
+      mxReplicaType: SERVER
+      template:
+        spec:
+          containers:
+            - image: jzp1025/mxnet:test
+              name: mxnet
+              command: ["python"]
+              args: ["train_mnist.py"]
+              workingDir: "/incubator-mxnet/example/image-classification"
           restartPolicy: OnFailure
     - replicas: 1
-      tfReplicaType: WORKER
+      mxReplicaType: WORKER
       template:
         spec:
           containers:
-            - image: gcr.io/tf-on-k8s-dogfood/tf_sample:dc944ff
-              name: tensorflow
+            - image: jzp1025/mxnet:test
+              name: mxnet
+              command: ["python"]
+              args: ["train_mnist.py","--num-epochs=10","--num-layers=2","--kv-store=dist_device_sync"]
+              workingDir: "/incubator-mxnet/example/image-classification"
           restartPolicy: OnFailure
-    - replicas: 2
-      tfReplicaType: PS
 ```
 
-Each replicaSpec defines a set of TensorFlow processes.
-The tfReplicaType defines the semantics for the set of processes.
+Each replicaSpec defines a set of MXNet processes.
+The mxReplicaType defines the semantics for the set of processes.
 The semantics are as follows
 
-**master**
-  * A job must have 1 and only 1 master
-  * The pod must contain a container named tensorflow
-  * The overall status of the TFJob is determined by the exit code of the
-    tensorflow container
+**scheduler**
+  * A job must have 1 and only 1 scheduler
+  * The pod must contain a container named mxnet
+  * The overall status of the MXJob is determined by the exit code of the
+    mxnet container
       * 0 = success
       * 1 || 2 || 126 || 127 || 128 || 139 = permanent errors:
           * 1: general errors
@@ -113,15 +136,12 @@ The semantics are as follows
 
 **worker**
   * A job can have 0 to N workers
-  * The pod must contain a container named tensorflow
+  * The pod must contain a container named mxnet
   * Workers are automatically restarted if they exit
 
-**ps**
-  * A job can have 0 to N parameter servers
+**server**
+  * A job can have 0 to N servers
   * parameter servers are automatically restarted if they exit
-  * If you do not specify a container named tensorflow the TFJob
-    will automatically add a container to the pod that starts a
-    standard TensorFlow gRPC server for each PS.
 
 
 For each replica you define a **template** which is a K8s
@@ -132,128 +152,117 @@ should be created for each replica.
 
 ### Using GPUs
 
-The following works with GKE & K8s 1.8+. If this doesn't work on
-your setup please consider opening an issue.
-
-Ensure your K8s cluster is properly configured to use GPUs ([instructions for GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/gpus), [generic instructions](https://kubernetes.io/docs/tasks/manage-gpus/scheduling-gpus/))
-  * Nodes must have GPUs attached
-  * K8s cluster must recognize the `nvidia.com/gpu` resource type
-  * GPU drivers must be installed on the cluster.
-
-To attach GPUs specify the GPU resource on the container e.g.
-
-```yaml
-apiVersion: "kubeflow.org/v1alpha1"
-kind: "TFJob"
-metadata:
-  name: "tf-smoke-gpu"
-spec:
-  replicaSpecs:
-    - tfReplicaType: MASTER
-      template:
-        spec:
-          containers:
-            - image: gcr.io/tf-on-k8s-dogfood/tf_sample_gpu:dc944ff
-              name: tensorflow
-              resources:
-                limits:
-                  nvidia.com/gpu: 1
-          restartPolicy: OnFailure
-```
-
-Follow TensorFlow's [instructions](https://www.tensorflow.org/tutorials/using_gpu)
-for using GPUs.
+not avaliable yet
 
 ## Monitoring your job
 
 To get the status of your job
 
 ```bash
-kubectl get -o yaml tfjobs $JOB
-```
+kubectl get -o yaml mxjobs $JOB
+```   
 
 Here is sample output for an example job
 
 ```yaml
 apiVersion: kubeflow.org/v1alpha1
-kind: TFJob
+kind: MXJob
 metadata:
   clusterName: ""
-  creationTimestamp: 2017-10-20T22:27:38Z
-  generation: 0
-  name: example-job
+  creationTimestamp: 2018-08-10T07:13:39Z
+  generation: 1
+  name: example-dist-job
   namespace: default
-  resourceVersion: "1881"
-  selfLink: /apis/kubeflow.org/v1alpha1/namespaces/default/tfjobs/example-job
-  uid: e11f9577-b5e5-11e7-8522-42010a8e01a4
+  resourceVersion: "491499"
+  selfLink: /apis/kubeflow.org/v1alpha1/namespaces/default/mxjobs/example-dist-job
+  uid: e800b1ed-9c6c-11e8-962f-704d7b2c0a63
 spec:
-  RuntimeId: 76no
+  RuntimeId: aycw
+  jobMode: dist
+  mxImage: jzp1025/mxnet:test
   replicaSpecs:
-  - replicas: 1
+  - PsRootPort: 9000
+    mxReplicaType: SCHEDULER
+    replicas: 1
     template:
       metadata:
         creationTimestamp: null
       spec:
         containers:
-        - image: gcr.io/tf-on-k8s-dogfood/tf_sample:dc944ff
-          name: tensorflow
+        - args:
+          - train_mnist.py
+          command:
+          - python
+          image: jzp1025/mxnet:test
+          name: mxnet
           resources: {}
+          workingDir: /incubator-mxnet/example/image-classification
         restartPolicy: OnFailure
-    tfPort: 2222
-    tfReplicaType: MASTER
-  - replicas: 1
+  - PsRootPort: 9091
+    mxReplicaType: SERVER
+    replicas: 1
     template:
       metadata:
         creationTimestamp: null
       spec:
         containers:
-        - image: gcr.io/tf-on-k8s-dogfood/tf_sample:dc944ff
-          name: tensorflow
+        - args:
+          - train_mnist.py
+          command:
+          - python
+          image: jzp1025/mxnet:test
+          name: mxnet
           resources: {}
+          workingDir: /incubator-mxnet/example/image-classification
         restartPolicy: OnFailure
-    tfPort: 2222
-    tfReplicaType: WORKER
-  - replicas: 2
+  - PsRootPort: 9091
+    mxReplicaType: WORKER
+    replicas: 1
     template:
       metadata:
         creationTimestamp: null
       spec:
         containers:
-        - image: tensorflow/tensorflow:1.3.0
-          name: tensorflow
+        - args:
+          - train_mnist.py
+          - --num-epochs=10
+          - --num-layers=2
+          - --kv-store=dist_device_sync
+          command:
+          - python
+          image: jzp1025/mxnet:test
+          name: mxnet
           resources: {}
-          volumeMounts:
-          - mountPath: /ps-server
-            name: ps-config-volume
+          workingDir: /incubator-mxnet/example/image-classification
         restartPolicy: OnFailure
-    tfPort: 2222
-    tfReplicaType: PS
-  tfImage: tensorflow/tensorflow:1.3.0
+  terminationPolicy:
+    chief:
+      replicaIndex: 0
+      replicaName: SCHEDULER
 status:
-  conditions: null
-  controlPaused: false
-  phase: Done
+  phase: Running
   reason: ""
   replicaStatuses:
   - ReplicasStates:
-      Succeeded: 1
-    state: Succeeded
-    tf_replica_type: MASTER
+      Running: 1
+    mx_replica_type: SCHEDULER
+    state: Running
   - ReplicasStates:
       Running: 1
+    mx_replica_type: SERVER
     state: Running
-    tf_replica_type: WORKER
   - ReplicasStates:
-      Running: 2
+      Running: 1
+    mx_replica_type: WORKER
     state: Running
-    tf_replica_type: PS
-  state: Succeeded
+  state: Running
+
 
 ```
 
 The first thing to note is the **RuntimeId**. This is a random unique
 string which is used to give names to all the K8s resouces
-(e.g Job controllers & services) that are created by the TFJob.
+(e.g Job controllers & services) that are created by the MXJob.
 
 As with other K8s resources status provides information about the state
 of the resource.
@@ -281,84 +290,13 @@ named
 ${REPLICA-TYPE}-${RUNTIME_ID}-${INDEX}
 ```
 
-For example, if you have 2 parameter servers and runtime id 76n0 TFJob
+For example, if you have 2 servers and runtime id 76n0 MXJob
 will create the jobs
 
 ```
-ps-76no-0
-ps-76no-1
+server-76no-0
+server-76no-1
 ```
-
-### TensorFlow Logs
-
-Logging follows standard K8s logging practices.
-
-You can use kubectl to get standard output/error for any of
-your running containers.
-
-First find the pod created by the job controller for the replica of
-index. Pods will be named
-
-```
-${REPLICA-TYPE}-${RUNTIME_ID}-${INDEX}-${RANDOM}
-```
-
-where RANDOM is a unique id generated by K8s to uniquely identify each
-pod.
-
-Once you've identified your pod you can get the logs using kubectl.
-
-```
-kubectl logs ${REPLICA-TYPE}-${RUNTIME_ID}-${INDEX}-${RADNOM}
-```
-
-We delete pods when a job completes to save resources (See [#512](https://github.com/kubeflow/tf-operator/pull/512)). Thus if you need to access to the log after the job is finished, you need to configure a log backend on your own.
-
-If your cluster takes advantage of K8s
-[logging infrastructure](https://kubernetes.io/docs/concepts/cluster-administration/logging/)
-then your logs may also be shipped to an appropriate data store for
-further analysis.
-
-#### GKE
-
-The default on GKE is send logs to
-[Stackdriver logging](https://cloud.google.com/logging/docs/).
-
-To get the logs for a particular pod you can use the following
-advanced filter in Stackdriver logging's search UI.
-
-```
-resource.type="container"
-resource.labels.pod_id=${POD_NAME}
-```
-
-where ${POD_NAME} is the name of the pod.
-
-**Tip** If you don't know the id of the pod, just enter the RuntimeId
-for your job into the Stackdriver logging search UI. This will find all
-log entries with the RuntimeId anywhere in the log entry. Since the
-RuntimeId is a random string, the only matches will be the log entries
-for your job.
-
-**Tip** If your program outputs an easily searchable log message with
-the replica type and index then you can search for this log message
-and use it to determine the ${POD_NAME} for a particular pod; e.g
-
-```
-cluster_json = os.getenv('TF_CONFIG')
-cluster = json.loads(cluster)
-logging.info("REPLICA_TYPE=%s,REPLICA_INDEX=%s", cluster["task"]["type"], cluster["task"]["index"])
-```
-
-This would log a message like
-
-```
-REPLICA_TYPE=worker,REPLICA_INDEX=0
-```
-
-which you could then search for in the StackDriver UI. Once you find
-the entry you can expand it to see **resource.labels.pod_id**.
-
 
 ## Contributing
 
