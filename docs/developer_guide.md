@@ -1,6 +1,6 @@
 # Developer Guide
 
-There are two versions of operator: one for v1alpha1 and one for v1alpha2.
+There are now only one version of operator: v1alpha1 .
 
 ## Building the operator
 
@@ -8,12 +8,14 @@ Create a symbolic link inside your GOPATH to the location you checked out the co
 
 ```sh
 mkdir -p ${GOPATH}/src/github.com/kubeflow
-ln -sf ${GIT_TRAINING} ${GOPATH}/src/github.com/kubeflow/tf-operator
+ln -sf ${GIT_TRAINING} ${GOPATH}/src/github.com/kubeflow/mx-operator
 ```
 
-* GIT_TRAINING should be the location where you checked out https://github.com/kubeflow/tf-operator
+* GIT_TRAINING should be the location where you checked out https://github.com/jzp0125/mx-operator
 
 Resolve dependencies (if you don't have dep install, check how to do it [here](https://github.com/golang/dep))
+
+(Remeber to set your GOPATH and PATH before using dep)
 
 Install dependencies
 
@@ -24,13 +26,7 @@ dep ensure
 Build it
 
 ```sh
-go install github.com/kubeflow/tf-operator/cmd/tf-operator
-```
-
-If you want to build the operator for v1alpha2, please use the command here:
-
-```sh
-go install github.com/kubeflow/tf-operator/cmd/tf-operator.v2
+go install github.com/kubeflow/mx-operator/cmd/mx-operator
 ```
 
 ## Building all the artifacts.
@@ -84,20 +80,13 @@ export KUBEFLOW_NAMESPACE=$(your_namespace)
 
 * KUBEFLOW_NAMESPACE is used when deployed on Kubernetes, we use this variable to create other resources (e.g. the resource lock) internal in the same namespace. It is optional, use `default` namespace if not set.
 
-### Create the TFJob CRD
+### Create the MXJob CRD
 
-After the cluster is up, the TFJob CRD should be created on the cluster.
+After the cluster is up, the MXJob CRD should be created on the cluster.
 
 ```bash
 # If you are using v1alpha1
 kubectl create -f ./examples/crd/crd.yml
-```
-
-Or
-
-```bash
-# If you are using v1alpha2
-kubectl create -f ./examples/crd/crd-v1alpha2.yaml
 ```
 
 ### Run Operator
@@ -105,24 +94,16 @@ kubectl create -f ./examples/crd/crd-v1alpha2.yaml
 Now we are ready to run operator locally:
 
 ```sh
-tf-operator
+mx-operator
 ```
 
 To verify local operator is working, create an example job and you should see jobs created by it.
 
 ```sh
 # If you are using v1alpha1
-kubectl create -f ./examples/tf_job.yaml
+kubectl create -f ./examples/mxjob_sample/mx_job_dist.yaml
 ```
 
-Or
-
-```bash
-# If you are using v1alpha2
-cd ./test/e2e/dist-mnist
-docker build -f Dockerfile -t kubeflow/tf-dist-mnist-test:1.0 .
-kubectl create -f ./tf-job-mnist.yaml
-```
 
 ## Go version
 
