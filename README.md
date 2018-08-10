@@ -310,7 +310,7 @@ server-76no-1
 
 ## Contributing
 
-Please refer to the [developer_guide](developer_guide.md)
+Please refer to the [developer_guide](./docs/developer_guide.md)
 
 ## Community
 
