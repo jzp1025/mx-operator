@@ -112,11 +112,10 @@ const (
 
 const (
 	DefaultMXContainer string = "mxnet"
-	DefaultMXImage     string = "jzp1025/mxnet:cpu"
+	DefaultMXImage     string = "jzp1025/mxnet:test"
 )
 
-// TODO(jlewi): We probably want to add a name field. This would allow us to have more than 1 type of each worker.
-// // MXReplicaSpec might be useful if you wanted to have a separate set of workers to do eval.
+// MXReplicaSpec might be useful if you wanted to have a separate set of workers to do eval.
 type MXReplicaSpec struct {
 	// Replicas is the number of desired replicas.
 	// This is a pointer to distinguish between explicit zero and unspecified.

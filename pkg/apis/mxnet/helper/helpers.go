@@ -105,10 +105,7 @@ func ConfigureAcceleratorsForMXJobSpec(c *mxv1.MXJobSpec, accelerators map[strin
 }
 
 // Cleanup cleans up user passed spec, e.g. defaulting, transforming fields.
-// TODO: move this to admission controller
 func Cleanup(c *mxv1.MXJobSpec) {
-	// TODO(jlewi): Add logic to cleanup user provided spec; e.g. by filling in defaults.
-	// We should have default container images so user doesn't have to provide these.
 }
 
 // CRDName returns the custom resource definition name which is combination of kind and group

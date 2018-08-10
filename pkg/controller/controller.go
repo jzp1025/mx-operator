@@ -130,7 +130,6 @@ func New(kubeClient kubernetes.Interface, mxJobClient mxjobclient.Interface,
 		MXJobClient: mxJobClient,
 		WorkQueue:   workqueue.NewNamedRateLimitingQueue(rateLimiter, "MXjobs"),
 		recorder:    recorder,
-		// TODO(jlewi)): What to do about cluster.Cluster?
 		jobs:                 make(map[string]*trainer.TrainingJob),
 		config:               config,
 		enableGangScheduling: enableGangScheduling,
@@ -293,15 +292,12 @@ func (c *Controller) syncMXJob(key string) (bool, error) {
 		return false, err
 	}
 
-	// TODO(jlewi): Why do we issue a get request again here?
 	mxJob, err = c.MXJobClient.KubeflowV1alpha1().MXJobs(mxJob.ObjectMeta.Namespace).Get(mxJob.ObjectMeta.Name, metav1.GetOptions{})
 
 	if err != nil {
 		return false, err
 	}
 
-	// TODO(jlewi): This logic will need to change when/if we get rid of phases and move to conditions. At that
-	// case we should forget about a job when the appropriate condition is reached.
 	if mxJob.Status.Phase == mxv1alpha1.MXJobPhaseCleanUp {
 		return true, nil
 	}

@@ -30,7 +30,6 @@ import (
 
 	mxv1alpha1 "github.com/kubeflow/mx-operator/pkg/apis/mxnet/v1alpha1"
 	"github.com/kubeflow/mx-operator/pkg/util/k8sutil"
-	// TOOO(jlewi): Rename to apiErrors
 	"github.com/kubeflow/mx-operator/pkg/apis/mxnet/helper"
 	"github.com/kubeflow/mx-operator/pkg/util"
 )
@@ -64,12 +63,8 @@ type MXReplicaSetInterface interface {
 // which is used by MXNet processes to configure themselves.
 type MXConfig struct {
 	// Cluster represents a MXNet ClusterSpec.
-	// See: https://www.tensorflow.org/api_docs/python/tf/train/ClusterSpec
 	Cluster ClusterSpec `json:"cluster"`
 	Task    TaskSpec    `json:"task"`
-	// Environment is used by tensorflow.contrib.learn.python.learn in versions <= 1.3
-	// TODO(jlewi): I don't think it is used in versions TF >- 1.4. So we can eventually get rid of it.
-	Environment string `json:"environment"`
 }
 
 // NewMXReplicaSet returns MXReplicaSet object for existing replica
@@ -327,7 +322,6 @@ func (s *MXReplicaSet) Delete() error {
 	}
 
 	// Services doesn't support DeleteCollection so we delete them individually.
-	// TODO(jlewi): We should check if this has changed with K8s 1.8 or other releases.
 	for index := int32(0); index < *s.Spec.Replicas; index++ {
 		s.contextLogger.WithFields(log.Fields{
 			indexField: index,
@@ -412,7 +406,6 @@ func replicaStatusFromPodList(l v1.PodList, name string) mxv1alpha1.ReplicaState
 			return mxv1alpha1.ReplicaStateRunning
 		}
 
-		// TODO(wenzhel): Should consider to return more info about pod to users.
 		return mxv1alpha1.ReplicaStateFailed
 	}
 
@@ -428,14 +421,11 @@ func (s *MXReplicaSet) GetSingleReplicaStatus(index int32) mxv1alpha1.ReplicaSta
 		return mxv1alpha1.ReplicaStateFailed
 	}
 
-	// TODO(jlewi): Handle errors. We need to get the pod and looking at recent container exits.
 	l, err := s.ClientSet.CoreV1().Pods(s.Job.job.ObjectMeta.Namespace).List(meta_v1.ListOptions{
-		// TODO(jlewi): Why isn't the label selector working?
 		LabelSelector: selector,
 	})
 
 	if err != nil {
-		// TODO(jlewi): Are there errors that should be treated as retryable errors?
 		return mxv1alpha1.ReplicaStateFailed
 	}
 
@@ -533,7 +523,6 @@ func (s *MXReplicaSet) SyncPods() error {
 		}
 
 		if err != nil {
-			// TODO: handing this error
 			continue
 		}
 	}
@@ -572,7 +561,6 @@ func (s *MXReplicaSet) SyncServices() error {
 			}
 
 			if err != nil {
-				// TODO: handing this error
 				continue
 			}
 			s.contextLogger.Infof("Service: %v error ++++++++++++++++++++!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",err)

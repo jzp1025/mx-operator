@@ -39,9 +39,7 @@ import (
 	train_util "github.com/kubeflow/mx-operator/pkg/util/train"
 )
 
-// TODO(jlewi): We should switch a New pattern and make trainingJob private so we can
 // TrainingJob represents a training job specification.
-// ensure correctness on creation.
 type TrainingJob struct {
 	job *mxv1alpha1.MXJob
 
@@ -67,7 +65,6 @@ type TrainingJob struct {
 }
 
 // ClusterSpec represents a cluster MXNet specification.
-// https://www.tensorflow.org/deploy/distributed#create_a_tftrainclusterspec_to_describe_the_cluster
 // It is a map from job names to network addresses.
 type ClusterSpec map[string]string
 
@@ -113,7 +110,7 @@ func NewJob(kubeCli kubernetes.Interface, mxJobClient mxjobclient.Interface, rec
 // For example, if the user issues a delete request. This will update the metadata on the object
 // so we need to replace the spec.
 func (j *TrainingJob) Update(newJob *mxv1alpha1.MXJob) {
-	j.contextLogger.Info("Updating job to %+v", *newJob)
+	j.contextLogger.Infof("Updating job to %+v", *newJob)
 	j.job = newJob
 }
 
@@ -173,7 +170,6 @@ func (j *TrainingJob) GetStatus() (mxv1alpha1.State, []*mxv1alpha1.MXReplicaStat
 	replicaStatuses := make([]*mxv1alpha1.MXReplicaStatus, 0)
 
 	// The state for each replica.
-	// TODO(jlewi): We will need to modify this code if we want to allow multiples of a given type of replica.
 	replicaSetStates := make(map[mxv1alpha1.MXReplicaType]mxv1alpha1.ReplicaState)
 
 	for _, r := range j.Replicas {
@@ -282,19 +278,11 @@ func (j *TrainingJob) setupReplicas() error {
 
 // Delete methods deletes the pods and frees the allocated resources
 func (j *TrainingJob) Delete() {
-	// TODO(jlewi): Delete is what should cause us to delete the Pods.
-	// we shouldn't delete the pods when the jobs finish because leaving the pods
-	// allows us to get the logs from the pods after the job finishes.
-	//
 	j.contextLogger.Infof("MXJob %v deleted by the user", j.fullname())
-	// TODO(jlewi): This logic is probably insufficient.
 	if j.job.Status.Phase != mxv1alpha1.MXJobPhaseCleanUp {
 		j.status.Phase = mxv1alpha1.MXJobPhaseCleanUp
 	}
 
-	// TODO(jlewi): Does it make sense to explicitly delete the resources? Should
-	// we just rely on K8s garbage collection to delete the resources before
-	// deleting MXJob?
 	if cErr := j.deleteResources(); cErr != nil {
 		j.contextLogger.Errorf("trainingJob.deleteResources() error; %v", cErr)
 	}
@@ -329,7 +317,6 @@ func (j *TrainingJob) updateCRDStatus() error {
 
 // Reconcile tries to get the job into the desired state.
 func (j *TrainingJob) Reconcile(config *mxv1alpha1.ControllerConfig, enableGangScheduling bool) error {
-	// TODO(jlewi): This doesn't seem to be a reliable way to detect deletion.
 	if j.job.ObjectMeta.DeletionTimestamp != nil {
 		j.contextLogger.Info("Deletion timestamp set; skipping reconcile")
 		// Job is in the process of being deleted so do nothing.
@@ -360,7 +347,6 @@ func (j *TrainingJob) Reconcile(config *mxv1alpha1.ControllerConfig, enableGangS
 	}
 
 	// sync PDB for gang scheduling
-	// TODO(mitake): replace PDB with a newer mechanism if it is replaced
 	if enableGangScheduling {
 		err := j.syncPdb()
 		if err != nil {
@@ -404,7 +390,6 @@ func (j *TrainingJob) Reconcile(config *mxv1alpha1.ControllerConfig, enableGangS
 
 		j.contextLogger.Errorf("-----------------------------------------------------GetStatus() for job %v returned state: %v", j.job.ObjectMeta.Name, state)
 
-		// TODO(jlewi): We should update the Phase if we detect the job is done.
 		if state == mxv1alpha1.StateFailed {
 			j.contextLogger.Errorf("Master failed Job: %v.", j.job.ObjectMeta.Name)
 			j.status.Phase = mxv1alpha1.MXJobPhaseCleanUp

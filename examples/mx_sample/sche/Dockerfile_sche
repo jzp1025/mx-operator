@@ -1,5 +1,0 @@
-FROM jzp1025/mxnet:cpu
-
-ENV DMLC_PS_ROOT_URI=10.130.21.71 DMLC_ROLE=scheduler DMLC_PS_ROOT_PORT=9001 DMLC_NUM_WORKER=2 DMLC_NUM_SERVER=2
-
-ENTRYPOINT ["python", "/mxnet/example/image-classification/train_mnist.py","--kv-store", "dist_sync"]
