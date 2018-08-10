@@ -24,9 +24,11 @@ example-dist-job   3m
 ### Requirements
 
 kubelet : v1.11.1
+
 kubeadm : v1.11.1
 
 Docker： 
+```
 Client:
  Version:      17.03.2-ce
  API version:  1.27
@@ -43,10 +45,14 @@ Server:
  Built:        Thu Jul  5 23:07:48 2018
  OS/Arch:      linux/amd64
  Experimental: false
+```
 
 kubectl :
+
+```
 Client Version: version.Info{Major:"1", Minor:"11", GitVersion:"v1.11.1", GitCommit:"b1b29978270dc22fecc592ac55d903350454310a", GitTreeState:"clean", BuildDate:"2018-07-17T18:53:20Z", GoVersion:"go1.10.3", Compiler:"gc", Platform:"linux/amd64"}
 Server Version: version.Info{Major:"1", Minor:"10", GitVersion:"v1.10.5", GitCommit:"32ac1c9073b132b8ba18aa830f46b77dcceb0723", GitTreeState:"clean", BuildDate:"2018-06-21T11:34:22Z", GoVersion:"go1.9.3", Compiler:"gc", Platform:"linux/amd64"}
+```
 
 kubernetes : branch release-1.11
 
@@ -54,7 +60,11 @@ incubator-mxnet : v1.2.0
 
 ## Installing the MXJob CRD and operator on your k8s cluster
 
+git clone https://github.com/jzp1025/mx-operator.git
 
+kubectl create -f ./examples/crd/crd.yaml
+
+kubectl create -f ./examples/mx_operator_deploy.yaml
 
 ## Creating a job
 
