@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: mx-job-operator
-        image: jzp1025/mx-operator:test
+        image: jzp1025/mx-operator:auto
         imagePullPolicy: Always
         env:
         - name: MY_POD_NAMESPACE
